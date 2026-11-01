@@ -50,8 +50,14 @@ Avoided CO2e per deposit = weight x emission factor for that material, using fac
 
 ## Current status
 _Update this section whenever work is handed off._
-- Planning phase. Docs written: AGENTS.md, PROJECT-CONTEXT, PRODUCT, DOMAIN, ARCHITECTURE, ADR 0001 and 0002, ROADMAP, plan for M0.
-- No code yet. Next: M0 (scaffolding), see `plans/active/M0-scaffolding.md`.
+- Milestone M0 (scaffolding & harness) is completed:
+  - Layout (`cmd/api`, `cmd/migrate`, `internal/platform`, `db/migrations`, `db/queries`).
+  - Config from env only with validation, structured JSON logging with `log/slog` (ADR 0003), HTTP middlewares (request ID, structured logger).
+  - Health (`/healthz`) and readiness (`/readyz`) endpoints.
+  - Database pool via `pgxpool`, migrations runner CLI (`cmd/migrate`) with baseline migration, `sqlc` configured with generated code.
+  - Multi-stage `Dockerfile`, `docker-compose.yml`, `Makefile`, `.golangci.yml`, GitHub Actions CI.
+  - Tests passing: unit tests for config, logger, and router.
+- Next: M1 (tenancy and auth), see `docs/plans/ROADMAP.md` (create `docs/plans/active/M1-tenancy-and-auth.md`).
 
 ## Open questions
 - Emission storage precision (gram vs milligram integer): decide in `DATA-MODEL.md`.

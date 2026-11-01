@@ -1,0 +1,35 @@
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gofmt
+    - gosec
+    - misspell
+  disable:
+    - exhaustive
+
+linters-settings:
+  govet:
+    check-shadowing: true
+  gosec:
+    excludes:
+      - G104 # unchecked errors (already caught by errcheck)
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+    - path: internal/platform/db/sqlc/
+      linters:
+        - govet
+        - errcheck
+        - gofmt

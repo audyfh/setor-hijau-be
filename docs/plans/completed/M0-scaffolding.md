@@ -1,6 +1,6 @@
 # Plan: M0 — Harness and scaffolding
 
-Status: not started
+Status: completed
 Roadmap: `../ROADMAP.md` (M0)
 
 ## Goal
