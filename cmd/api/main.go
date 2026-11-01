@@ -11,10 +11,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/audyfh/setor-hijau-be/internal/auth"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
 	"github.com/audyfh/setor-hijau-be/internal/platform/db"
+	"github.com/audyfh/setor-hijau-be/internal/platform/db/sqlc"
 	"github.com/audyfh/setor-hijau-be/internal/platform/logger"
+	"github.com/audyfh/setor-hijau-be/internal/platform/middleware"
 	"github.com/audyfh/setor-hijau-be/internal/platform/router"
+	"github.com/audyfh/setor-hijau-be/internal/tenant"
 )
 
 func main() {
@@ -41,10 +45,29 @@ func main() {
 	}
 	defer database.Close()
 
+	// Initialize queries and services
+	queries := sqlc.New(database.Pool)
+
+	authRepo := auth.NewRepository(queries)
+	emailSender := auth.NewLogEmailSender(log)
+	authService := auth.NewService(authRepo, emailSender, []byte(cfg.JWTSecret))
+	authHandler := auth.NewHandler(authService)
+
+	tenantRepo := tenant.NewRepository(queries)
+	tenantService := tenant.NewService(database.Pool, tenantRepo, authService)
+	tenantHandler := tenant.NewHandler(tenantService)
+
+	authMid := middleware.AuthMiddleware([]byte(cfg.JWTSecret))
+	rateLimiter := middleware.NewRateLimiter(30, 1*time.Minute)
+
 	engine := router.New(router.Options{
-		Config: cfg,
-		Logger: log,
-		DB:     database,
+		Config:        cfg,
+		Logger:        log,
+		DB:            database,
+		AuthHandler:   authHandler,
+		TenantHandler: tenantHandler,
+		AuthMid:       authMid,
+		RateLimiter:   rateLimiter,
 	})
 
 	srv := &http.Server{

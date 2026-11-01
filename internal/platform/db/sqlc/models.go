@@ -8,8 +8,56 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type BankSampah struct {
+	ID            pgtype.UUID
+	Name          string
+	Code          string
+	Address       string
+	Rw            string
+	Rt            pgtype.Text
+	Kelurahan     string
+	Kecamatan     string
+	KabupatenKota string
+	Provinsi      string
+	ContactPhone  pgtype.Text
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
+type PasswordResetToken struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	TokenHash string
+	ExpiresAt pgtype.Timestamptz
+	UsedAt    pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+}
+
+type RefreshToken struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	TokenHash string
+	ExpiresAt pgtype.Timestamptz
+	RevokedAt pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+}
+
 type SystemMetadatum struct {
 	Key       string
 	Value     string
 	UpdatedAt pgtype.Timestamptz
+}
+
+type User struct {
+	ID           pgtype.UUID
+	BankSampahID pgtype.UUID
+	Username     string
+	Email        pgtype.Text
+	PasswordHash string
+	FullName     string
+	Role         string
+	Phone        pgtype.Text
+	IsActive     bool
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
 }

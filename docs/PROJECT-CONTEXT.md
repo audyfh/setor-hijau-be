@@ -57,13 +57,19 @@ _Update this section whenever work is handed off._
   - Database pool via `pgxpool`, migrations runner CLI (`cmd/migrate`) with baseline migration, `sqlc` configured with generated code.
   - Multi-stage `Dockerfile`, `docker-compose.yml`, `Makefile`, `.golangci.yml`, GitHub Actions CI.
   - Tests passing: unit tests for config, logger, and router.
-- Next: M1 (tenancy and auth), see `docs/plans/ROADMAP.md` (create `docs/plans/active/M1-tenancy-and-auth.md`).
+- Milestone M1 (tenancy and auth) is completed:
+  - Data model defined in `docs/DATA-MODEL.md` with integer precision (IDR, grams, grams CO2e).
+  - ADR 0004 (Application-Enforced Multi-tenancy) and ADR 0005 (Pengelola Account Recovery).
+  - Database migration `000002_m1_tenancy_auth` and sqlc query generation for tenants and auth.
+  - Tenant registration module (`internal/tenant`) with atomic bank sampah + initial pengelola creation.
+  - Auth module (`internal/auth`) with Argon2id password hashing, short-lived JWT, rotating refresh tokens stored hashed in DB, logout, and token-based password reset.
+  - Security middlewares (`internal/platform/middleware`): `AuthMiddleware`, `RequireRole`, and in-memory `RateLimiter`.
+  - Integration test harness and test suites in `test/integration/` verifying tenant isolation, token rotation, rate limiting, and password reset.
+- Next: M2 (Nasabah and master data), see `docs/plans/ROADMAP.md`.
 
 ## Open questions
-- Emission storage precision (gram vs milligram integer): decide in `DATA-MODEL.md`.
 - Where CO2.js runs (frontend most likely) and how the API receives digital-footprint measurements: decide in M6.
 - Monorepo vs separate repos for BE and FE.
-- Whether to enforce PostgreSQL row-level security in addition to application filtering (planned; confirm by ADR in M1).
 - Exact WARM material list and mapping to Indonesian waste categories: `CARBON-METHOD.md`.
 
 ## Where to look

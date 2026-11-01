@@ -6,17 +6,23 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/audyfh/setor-hijau-be/internal/auth"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
 	"github.com/audyfh/setor-hijau-be/internal/platform/db"
 	"github.com/audyfh/setor-hijau-be/internal/platform/middleware"
+	"github.com/audyfh/setor-hijau-be/internal/tenant"
 	"github.com/gin-gonic/gin"
 )
 
 // Options holds dependencies required to build the HTTP router.
 type Options struct {
-	Config *config.Config
-	Logger *slog.Logger
-	DB     db.Pinger
+	Config        *config.Config
+	Logger        *slog.Logger
+	DB            db.Pinger
+	AuthHandler   *auth.Handler
+	TenantHandler *tenant.Handler
+	AuthMid       gin.HandlerFunc
+	RateLimiter   *middleware.RateLimiter
 }
 
 // New constructs and configures the Gin engine.
@@ -74,6 +80,17 @@ func New(opts Options) *gin.Engine {
 			"database": "connected",
 		})
 	})
+
+	// API v1 routes
+	if opts.AuthHandler != nil || opts.TenantHandler != nil {
+		v1 := r.Group("/api/v1")
+		if opts.TenantHandler != nil {
+			opts.TenantHandler.RegisterRoutes(v1, opts.AuthMid)
+		}
+		if opts.AuthHandler != nil {
+			opts.AuthHandler.RegisterRoutes(v1, opts.AuthMid, opts.RateLimiter)
+		}
+	}
 
 	return r
 }
