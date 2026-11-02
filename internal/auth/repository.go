@@ -25,6 +25,11 @@ type Repository interface {
 	GetUserByIDGlobal(ctx context.Context, id uuid.UUID) (*User, error)
 	GetPengelolaByIdentifier(ctx context.Context, identifier string) (*User, error)
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
+	GetUserByUsernameAndBankSampahCode(ctx context.Context, username, code string) (*User, error)
+	GetNasabahForQRLogin(ctx context.Context, qrTokenHash string) (*sqlc.GetNasabahForQRLoginRow, error)
+	RecordFailedPINAttempt(ctx context.Context, userID uuid.UUID) (int32, error)
+	LockNasabahPIN(ctx context.Context, userID uuid.UUID, lockedUntil time.Time) error
+	ResetFailedPINAttempts(ctx context.Context, userID uuid.UUID) error
 	UpdateUserPassword(ctx context.Context, id uuid.UUID, passwordHash string) (*User, error)
 	CreateRefreshToken(ctx context.Context, userID uuid.UUID, tokenHash string, expiresAt time.Time) error
 	GetRefreshTokenByHash(ctx context.Context, tokenHash string) (*sqlc.RefreshToken, error)
@@ -184,4 +189,44 @@ func (r *pgRepository) GetPasswordResetTokenByHash(ctx context.Context, tokenHas
 func (r *pgRepository) MarkPasswordResetTokenUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := r.queries.MarkPasswordResetTokenUsed(ctx, db.ToPGUUID(id))
 	return err
+}
+
+func (r *pgRepository) GetUserByUsernameAndBankSampahCode(ctx context.Context, username, code string) (*User, error) {
+	u, err := r.queries.GetUserByUsernameAndBankSampahCode(ctx, sqlc.GetUserByUsernameAndBankSampahCodeParams{
+		Username: username,
+		Code:     code,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+	return toUserModel(u), nil
+}
+
+func (r *pgRepository) GetNasabahForQRLogin(ctx context.Context, qrTokenHash string) (*sqlc.GetNasabahForQRLoginRow, error) {
+	row, err := r.queries.GetNasabahForQRLogin(ctx, qrTokenHash)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *pgRepository) RecordFailedPINAttempt(ctx context.Context, userID uuid.UUID) (int32, error) {
+	return r.queries.RecordFailedPINAttempt(ctx, db.ToPGUUID(userID))
+}
+
+func (r *pgRepository) LockNasabahPIN(ctx context.Context, userID uuid.UUID, lockedUntil time.Time) error {
+	return r.queries.LockNasabahPIN(ctx, sqlc.LockNasabahPINParams{
+		LockedUntil: db.ToPGTimestamptz(lockedUntil),
+		UserID:      db.ToPGUUID(userID),
+	})
+}
+
+func (r *pgRepository) ResetFailedPINAttempts(ctx context.Context, userID uuid.UUID) error {
+	return r.queries.ResetFailedPINAttempts(ctx, db.ToPGUUID(userID))
 }

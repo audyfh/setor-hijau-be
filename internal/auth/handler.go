@@ -25,9 +25,11 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup, authMid gin.HandlerFunc, r
 		// Public endpoints protected by rate limiting
 		if rateLimiter != nil {
 			authGroup.POST("/login", middleware.RateLimitMiddleware(rateLimiter), h.Login)
+			authGroup.POST("/login/qr", middleware.RateLimitMiddleware(rateLimiter), h.LoginQR)
 			authGroup.POST("/forgot-password", middleware.RateLimitMiddleware(rateLimiter), h.ForgotPassword)
 		} else {
 			authGroup.POST("/login", h.Login)
+			authGroup.POST("/login/qr", h.LoginQR)
 			authGroup.POST("/forgot-password", h.ForgotPassword)
 		}
 
@@ -67,6 +69,56 @@ func (h *Handler) Login(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Terjadi kesalahan pada server."})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"tokens": tokenPair,
+		"user":   user,
+	})
+}
+
+// LoginQR godoc
+// @Summary Login Nasabah via QR & PIN
+// @Description Autentikasi Nasabah menggunakan token QR dan PIN 6-digit.
+func (h *Handler) LoginQR(c *gin.Context) {
+	var req QRLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Permintaan tidak valid. Harap periksa token QR dan PIN.",
+		})
+		return
+	}
+
+	tokenPair, user, err := h.service.LoginWithQR(c.Request.Context(), req)
+	if err != nil {
+		if errors.Is(err, ErrAccountInactive) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "Akun Anda telah dinonaktifkan. Hubungi pengelola.",
+			})
+			return
+		}
+		if errors.Is(err, ErrAccountLocked) {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+		if errors.Is(err, ErrPINNotConfigured) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+		if errors.Is(err, ErrInvalidCredentials) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Token QR atau PIN tidak valid.",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Terjadi kesalahan internal saat autentikasi.",
+		})
 		return
 	}
 

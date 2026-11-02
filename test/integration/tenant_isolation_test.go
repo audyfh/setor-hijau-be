@@ -3,9 +3,12 @@ package integration_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/audyfh/setor-hijau-be/internal/material"
+	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/tenant"
 	"github.com/audyfh/setor-hijau-be/test/integration"
 	"github.com/stretchr/testify/assert"
@@ -140,6 +143,81 @@ func TestTenantIsolation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, tenantBResp.BankSampah.ID, dataCurB.BankSampah.ID)
 	assert.Equal(t, "bs-makmur-rw02", dataCurB.BankSampah.Code)
+
+	// 5. Tenant A creates Nasabah A and Material A
+	createNasReq := nasabah.CreateNasabahRequest{
+		Username: "nasabah_a",
+		FullName: "Nasabah Tenant A",
+		Password: "password123",
+		RW:       "01",
+		RT:       "02",
+		PIN:      "112233",
+	}
+	bodyNas, _ := json.Marshal(createNasReq)
+	postNasA, _ := http.NewRequest(http.MethodPost, harness.Server.URL+"/api/v1/nasabah", bytes.NewReader(bodyNas))
+	postNasA.Header.Set("Authorization", "Bearer "+tenantAResp.Tokens.AccessToken)
+	postNasA.Header.Set("Content-Type", "application/json")
+	respNasA, err := clientA.Do(postNasA)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, respNasA.StatusCode)
+
+	var nasAResp nasabah.CreateNasabahResponse
+	err = json.NewDecoder(respNasA.Body).Decode(&nasAResp)
+	require.NoError(t, err)
+	nasabahAID := nasAResp.Nasabah.ID
+	qrTokenA := nasAResp.QRToken
+
+	createMatReq := material.CreateMaterialRequest{
+		Name:          "Kertas Koran Tenant A",
+		Category:      "kertas",
+		PricePerKgIDR: 2000,
+	}
+	bodyMat, _ := json.Marshal(createMatReq)
+	postMatA, _ := http.NewRequest(http.MethodPost, harness.Server.URL+"/api/v1/materials", bytes.NewReader(bodyMat))
+	postMatA.Header.Set("Authorization", "Bearer "+tenantAResp.Tokens.AccessToken)
+	postMatA.Header.Set("Content-Type", "application/json")
+	respMatA, err := clientA.Do(postMatA)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, respMatA.StatusCode)
+
+	var matAResp material.Material
+	err = json.NewDecoder(respMatA.Body).Decode(&matAResp)
+	require.NoError(t, err)
+	materialAID := matAResp.ID
+
+	// 6. Hard Rule #1: Tenant B cannot access Nasabah A
+	getNasB, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/nasabah/%s", harness.Server.URL, nasabahAID), nil)
+	getNasB.Header.Set("Authorization", "Bearer "+tenantBResp.Tokens.AccessToken)
+	respGetNasB, err := clientB.Do(getNasB)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, respGetNasB.StatusCode)
+
+	// 7. Hard Rule #1: Tenant B scanning Nasabah A's QR token returns 404
+	lookupQRBReq := nasabah.LookupQRRequest{QRToken: qrTokenA}
+	bodyLookupB, _ := json.Marshal(lookupQRBReq)
+	postLookupB, _ := http.NewRequest(http.MethodPost, harness.Server.URL+"/api/v1/nasabah/lookup-qr", bytes.NewReader(bodyLookupB))
+	postLookupB.Header.Set("Authorization", "Bearer "+tenantBResp.Tokens.AccessToken)
+	postLookupB.Header.Set("Content-Type", "application/json")
+	respLookupB, err := clientB.Do(postLookupB)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, respLookupB.StatusCode)
+
+	// 8. Hard Rule #1: Tenant B cannot access Material A
+	getMatB, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/materials/%s", harness.Server.URL, materialAID), nil)
+	getMatB.Header.Set("Authorization", "Bearer "+tenantBResp.Tokens.AccessToken)
+	respGetMatB, err := clientB.Do(getMatB)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, respGetMatB.StatusCode)
+
+	// 9. Hard Rule #1: Tenant B listing materials only sees Tenant B materials (0 items)
+	listMatB, _ := http.NewRequest(http.MethodGet, harness.Server.URL+"/api/v1/materials", nil)
+	listMatB.Header.Set("Authorization", "Bearer "+tenantBResp.Tokens.AccessToken)
+	respListMatB, err := clientB.Do(listMatB)
+	require.NoError(t, err)
+	var matListB []*material.Material
+	err = json.NewDecoder(respListMatB.Body).Decode(&matListB)
+	require.NoError(t, err)
+	assert.Empty(t, matListB)
 
 	// Tenant A sees Tenant A, Tenant B sees Tenant B. Absolute isolation verified!
 }

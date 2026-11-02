@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	pauth "github.com/audyfh/setor-hijau-be/internal/platform/auth"
@@ -19,11 +20,16 @@ var (
 	ErrAccountInactive = errors.New("akun tidak aktif")
 	// ErrInvalidResetToken indicates the reset token is invalid, expired, or already used.
 	ErrInvalidResetToken = errors.New("token reset kata sandi tidak valid atau telah kedaluwarsa")
+	// ErrAccountLocked indicates temporary lockout due to excessive failed attempts.
+	ErrAccountLocked = errors.New("akun terkunci sementara karena percobaan PIN yang salah. Silakan coba lagi nanti")
+	// ErrPINNotConfigured indicates the user has not set a PIN yet.
+	ErrPINNotConfigured = errors.New("PIN belum diatur untuk akun ini. Silakan hubungi pengelola")
 )
 
 // Service defines domain logic for authentication and credential management.
 type Service interface {
 	Login(ctx context.Context, req LoginRequest) (*TokenPair, *UserResponse, error)
+	LoginWithQR(ctx context.Context, req QRLoginRequest) (*TokenPair, *UserResponse, error)
 	RefreshToken(ctx context.Context, req RefreshTokenRequest) (*TokenPair, error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetMe(ctx context.Context, userID, bankSampahID uuid.UUID) (*UserResponse, error)
@@ -53,7 +59,18 @@ func NewService(repo Repository, emailSender EmailSender, jwtSecret []byte) Serv
 }
 
 func (s *service) Login(ctx context.Context, req LoginRequest) (*TokenPair, *UserResponse, error) {
-	user, err := s.repo.GetPengelolaByIdentifier(ctx, req.Identifier)
+	var user *User
+	var err error
+
+	if req.BankSampahCode != "" {
+		user, err = s.repo.GetUserByUsernameAndBankSampahCode(ctx, req.Identifier, req.BankSampahCode)
+	} else {
+		user, err = s.repo.GetPengelolaByIdentifier(ctx, req.Identifier)
+		if err != nil && errors.Is(err, ErrUserNotFound) && strings.Contains(req.Identifier, "@") {
+			user, err = s.repo.GetUserByEmail(ctx, req.Identifier)
+		}
+	}
+
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return nil, nil, ErrInvalidCredentials
@@ -68,6 +85,80 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*TokenPair, *Use
 	match, err := pauth.VerifyPassword(req.Password, user.PasswordHash)
 	if err != nil || !match {
 		return nil, nil, ErrInvalidCredentials
+	}
+
+	tokenPair, err := s.GenerateTokenPair(ctx, user)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	userResp := &UserResponse{
+		ID:           user.ID,
+		BankSampahID: user.BankSampahID,
+		Username:     user.Username,
+		Email:        user.Email,
+		FullName:     user.FullName,
+		Role:         user.Role,
+		Phone:        user.Phone,
+		CreatedAt:    user.CreatedAt,
+	}
+
+	return tokenPair, userResp, nil
+}
+
+func (s *service) LoginWithQR(ctx context.Context, req QRLoginRequest) (*TokenPair, *UserResponse, error) {
+	qrTokenHash := pauth.HashToken(req.QRToken)
+
+	row, err := s.repo.GetNasabahForQRLogin(ctx, qrTokenHash)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, nil, ErrInvalidCredentials
+		}
+		return nil, nil, err
+	}
+
+	userID := db.FromPGUUID(row.ID)
+
+	if !row.IsActive {
+		return nil, nil, ErrAccountInactive
+	}
+
+	// Check temporary lockout
+	if row.LockedUntil.Valid && row.LockedUntil.Time.After(time.Now().UTC()) {
+		return nil, nil, ErrAccountLocked
+	}
+
+	// Check if PIN is configured
+	if !row.PinHash.Valid || row.PinHash.String == "" {
+		return nil, nil, ErrPINNotConfigured
+	}
+
+	// Verify PIN
+	match, err := pauth.VerifyPassword(req.PIN, row.PinHash.String)
+	if err != nil || !match {
+		attempts, recErr := s.repo.RecordFailedPINAttempt(ctx, userID)
+		if recErr == nil && attempts >= 5 {
+			_ = s.repo.LockNasabahPIN(ctx, userID, time.Now().UTC().Add(15*time.Minute))
+			return nil, nil, ErrAccountLocked
+		}
+		return nil, nil, ErrInvalidCredentials
+	}
+
+	// Reset failed attempts on successful verification
+	if row.FailedPinAttempts > 0 {
+		_ = s.repo.ResetFailedPINAttempts(ctx, userID)
+	}
+
+	user := &User{
+		ID:           userID,
+		BankSampahID: db.FromPGUUID(row.BankSampahID),
+		Username:     row.Username,
+		Email:        db.FromPGText(row.Email),
+		FullName:     row.FullName,
+		Role:         row.Role,
+		Phone:        db.FromPGText(row.Phone),
+		IsActive:     row.IsActive,
+		CreatedAt:    db.FromPGTimestamptz(row.CreatedAt),
 	}
 
 	tokenPair, err := s.GenerateTokenPair(ctx, user)

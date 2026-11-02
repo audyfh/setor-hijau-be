@@ -49,8 +49,15 @@ type TokenPair struct {
 
 // LoginRequest defines input for identifier + password authentication.
 type LoginRequest struct {
-	Identifier string `json:"identifier" binding:"required"`
-	Password   string `json:"password" binding:"required"`
+	Identifier     string `json:"identifier" binding:"required"`
+	Password       string `json:"password" binding:"required"`
+	BankSampahCode string `json:"bank_sampah_code,omitempty"`
+}
+
+// QRLoginRequest defines input for QR token + PIN authentication.
+type QRLoginRequest struct {
+	QRToken string `json:"qr_token" binding:"required"`
+	PIN     string `json:"pin" binding:"required"`
 }
 
 // RefreshTokenRequest defines input for refresh token exchange.

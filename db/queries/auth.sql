@@ -31,6 +31,11 @@ LIMIT 1;
 SELECT * FROM users
 WHERE username = $1 AND bank_sampah_id = $2 LIMIT 1;
 
+-- name: GetUserByUsernameAndBankSampahCode :one
+SELECT u.* FROM users u
+JOIN bank_sampah b ON u.bank_sampah_id = b.id
+WHERE u.username = $1 AND b.code = $2 LIMIT 1;
+
 -- name: GetUserByEmail :one
 SELECT * FROM users
 WHERE email = $1 LIMIT 1;

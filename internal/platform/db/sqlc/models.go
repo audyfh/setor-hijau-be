@@ -24,6 +24,44 @@ type BankSampah struct {
 	UpdatedAt     pgtype.Timestamptz
 }
 
+type MaterialPrice struct {
+	ID             pgtype.UUID
+	MaterialTypeID pgtype.UUID
+	BankSampahID   pgtype.UUID
+	PricePerKgIdr  int64
+	EffectiveFrom  pgtype.Timestamptz
+	EffectiveTo    pgtype.Timestamptz
+	CreatedBy      pgtype.UUID
+	CreatedAt      pgtype.Timestamptz
+}
+
+type MaterialType struct {
+	ID           pgtype.UUID
+	BankSampahID pgtype.UUID
+	Name         string
+	Category     string
+	Unit         string
+	Description  pgtype.Text
+	IsActive     bool
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
+type NasabahProfile struct {
+	UserID            pgtype.UUID
+	BankSampahID      pgtype.UUID
+	QrTokenHash       string
+	PinHash           pgtype.Text
+	FailedPinAttempts int32
+	LockedUntil       pgtype.Timestamptz
+	Rw                string
+	Rt                pgtype.Text
+	AddressNotes      pgtype.Text
+	RegisteredBy      pgtype.UUID
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
 type PasswordResetToken struct {
 	ID        pgtype.UUID
 	UserID    pgtype.UUID

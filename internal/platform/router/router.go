@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/audyfh/setor-hijau-be/internal/auth"
+	"github.com/audyfh/setor-hijau-be/internal/material"
+	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
 	"github.com/audyfh/setor-hijau-be/internal/platform/db"
 	"github.com/audyfh/setor-hijau-be/internal/platform/middleware"
@@ -16,13 +18,15 @@ import (
 
 // Options holds dependencies required to build the HTTP router.
 type Options struct {
-	Config        *config.Config
-	Logger        *slog.Logger
-	DB            db.Pinger
-	AuthHandler   *auth.Handler
-	TenantHandler *tenant.Handler
-	AuthMid       gin.HandlerFunc
-	RateLimiter   *middleware.RateLimiter
+	Config          *config.Config
+	Logger          *slog.Logger
+	DB              db.Pinger
+	AuthHandler     *auth.Handler
+	TenantHandler   *tenant.Handler
+	NasabahHandler  *nasabah.Handler
+	MaterialHandler *material.Handler
+	AuthMid         gin.HandlerFunc
+	RateLimiter     *middleware.RateLimiter
 }
 
 // New constructs and configures the Gin engine.
@@ -82,13 +86,19 @@ func New(opts Options) *gin.Engine {
 	})
 
 	// API v1 routes
-	if opts.AuthHandler != nil || opts.TenantHandler != nil {
+	if opts.AuthHandler != nil || opts.TenantHandler != nil || opts.NasabahHandler != nil || opts.MaterialHandler != nil {
 		v1 := r.Group("/api/v1")
 		if opts.TenantHandler != nil {
 			opts.TenantHandler.RegisterRoutes(v1, opts.AuthMid)
 		}
 		if opts.AuthHandler != nil {
 			opts.AuthHandler.RegisterRoutes(v1, opts.AuthMid, opts.RateLimiter)
+		}
+		if opts.NasabahHandler != nil {
+			opts.NasabahHandler.RegisterRoutes(v1, opts.AuthMid)
+		}
+		if opts.MaterialHandler != nil {
+			opts.MaterialHandler.RegisterRoutes(v1, opts.AuthMid)
 		}
 	}
 

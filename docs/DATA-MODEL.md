@@ -154,14 +154,121 @@ Self-service recovery tokens for Pengelola accounts.
 
 ---
 
+## Milestone 2 Schema (Nasabah & Master Data)
+
+```mermaid
+erDiagram
+    BANK_SAMPAH ||--o{ NASABAH_PROFILES : "has profiles"
+    USERS ||--o| NASABAH_PROFILES : "profile of"
+    BANK_SAMPAH ||--o{ MATERIAL_TYPES : "configures"
+    MATERIAL_TYPES ||--o{ MATERIAL_PRICES : "has price history"
+    BANK_SAMPAH ||--o{ MATERIAL_PRICES : "tenant scoped"
+
+    NASABAH_PROFILES {
+        uuid user_id PK, FK
+        uuid bank_sampah_id FK
+        varchar qr_token_hash UK
+        text pin_hash
+        int failed_pin_attempts
+        timestamptz locked_until
+        varchar rw
+        varchar rt
+        text address_notes
+        uuid registered_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    MATERIAL_TYPES {
+        uuid id PK
+        uuid bank_sampah_id FK
+        varchar name
+        varchar category
+        varchar unit
+        text description
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    MATERIAL_PRICES {
+        uuid id PK
+        uuid material_type_id FK
+        uuid bank_sampah_id FK
+        bigint price_per_kg_idr
+        timestamptz effective_from
+        timestamptz effective_to
+        uuid created_by FK
+        timestamptz created_at
+    }
+```
+
+### 5. `nasabah_profiles`
+Metadata, QR identification token hash, and PIN security for accounts with role `nasabah`.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `user_id` | `UUID` | `PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE` | User account |
+| `bank_sampah_id` | `UUID` | `NOT NULL REFERENCES bank_sampah(id) ON DELETE CASCADE` | Associated tenant |
+| `qr_token_hash` | `VARCHAR(64)` | `NOT NULL UNIQUE` | SHA-256 hash of the 32-byte opaque QR token string |
+| `pin_hash` | `TEXT` | `NULL` | Argon2id hash of the optional 6-digit PIN |
+| `failed_pin_attempts` | `INT` | `NOT NULL DEFAULT 0` | Consecutive failed PIN attempts |
+| `locked_until` | `TIMESTAMPTZ` | `NULL` | Temporary lockout timestamp after 5 failed attempts |
+| `rw` | `VARCHAR(10)` | `NOT NULL` | Neighborhood unit (RW) |
+| `rt` | `VARCHAR(10)` | `NULL` | Neighborhood unit (RT) |
+| `address_notes` | `TEXT` | `NULL` | Optional address or house number notes |
+| `registered_by` | `UUID` | `NULL REFERENCES users(id) ON DELETE SET NULL` | Pengelola who created this account |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Profile creation timestamp |
+| `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Profile update timestamp |
+
+*Indexes and Constraints:*
+- `CREATE INDEX idx_nasabah_profiles_bank_sampah ON nasabah_profiles(bank_sampah_id);`
+- `CREATE INDEX idx_nasabah_profiles_qr_token_hash ON nasabah_profiles(qr_token_hash);`
+
+### 6. `material_types`
+Master data of recyclable waste categories accepted by a bank sampah.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique material identifier |
+| `bank_sampah_id` | `UUID` | `NOT NULL REFERENCES bank_sampah(id) ON DELETE CASCADE` | Associated tenant |
+| `name` | `VARCHAR(100)` | `NOT NULL` | Name of the material (e.g., "Kardus Bekas", "Botol PET") |
+| `category` | `VARCHAR(50)` | `NOT NULL` | Category group (e.g. `kertas`, `plastik`, `logam`, `kaca`, `lainnya`) |
+| `unit` | `VARCHAR(20)` | `NOT NULL DEFAULT 'kg'` | Display unit (default `kg`) |
+| `description` | `TEXT` | `NULL` | Sorting guidelines or notes |
+| `is_active` | `BOOLEAN` | `NOT NULL DEFAULT TRUE` | Active for deposit recording |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Record creation timestamp |
+| `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Record update timestamp |
+
+*Indexes and Constraints:*
+- `CONSTRAINT uq_material_types_bank_sampah_name UNIQUE (bank_sampah_id, name)`
+- `CREATE INDEX idx_material_types_bank_sampah ON material_types(bank_sampah_id);`
+
+### 7. `material_prices`
+Append-only historical prices per kilogram in integer Rupiah (Hard Rule #3).
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique price entry ID |
+| `material_type_id` | `UUID` | `NOT NULL REFERENCES material_types(id) ON DELETE CASCADE` | Material reference |
+| `bank_sampah_id` | `UUID` | `NOT NULL REFERENCES bank_sampah(id) ON DELETE CASCADE` | Tenant reference |
+| `price_per_kg_idr` | `BIGINT` | `NOT NULL CHECK (price_per_kg_idr >= 0)` | Price per kilogram in IDR |
+| `effective_from` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | When price takes effect |
+| `effective_to` | `TIMESTAMPTZ` | `NULL` | When price ceased (`NULL` = currently active) |
+| `created_by` | `UUID` | `NULL REFERENCES users(id) ON DELETE SET NULL` | Pengelola who set this price |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Entry creation timestamp |
+
+*Indexes and Constraints:*
+- `CREATE INDEX idx_material_prices_material_type ON material_prices(material_type_id);`
+- `CREATE INDEX idx_material_prices_bank_sampah ON material_prices(bank_sampah_id);`
+- `CREATE INDEX idx_material_prices_effective ON material_prices(material_type_id, effective_to);`
+
+---
+
 ## Preview: Subsequent Milestone Entities
 
 The following entities are planned for upcoming milestones and will be migrated incrementally:
 
-- **M2 (Nasabah & Master Data)**:
-  - `nasabah_profiles`: Additional metadata for nasabah (`qr_token_hash`, `pin_hash`, `rw`, `rt`, `registered_by`).
-  - `material_types`: Waste categories (`bank_sampah_id`, `name`, `unit`, `is_active`).
-  - `material_prices`: Price history (`material_type_id`, `price_per_unit_idr`, `effective_from`, `effective_to`).
 - **M3 (Deposits & Balance)**:
   - `deposits`: Deposit transactions (`id`, `bank_sampah_id`, `nasabah_id`, `idempotency_key`, `total_amount_idr`, `client_recorded_at`, `created_at`).
   - `deposit_lines`: Line items (`deposit_id`, `material_type_id`, `weight_grams`, `price_per_kg_idr`, `subtotal_idr`, `co2e_avoided_grams`).

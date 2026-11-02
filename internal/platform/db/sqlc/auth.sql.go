@@ -298,6 +298,36 @@ func (q *Queries) GetUserByUsername(ctx context.Context, arg GetUserByUsernamePa
 	return i, err
 }
 
+const getUserByUsernameAndBankSampahCode = `-- name: GetUserByUsernameAndBankSampahCode :one
+SELECT u.id, u.bank_sampah_id, u.username, u.email, u.password_hash, u.full_name, u.role, u.phone, u.is_active, u.created_at, u.updated_at FROM users u
+JOIN bank_sampah b ON u.bank_sampah_id = b.id
+WHERE u.username = $1 AND b.code = $2 LIMIT 1
+`
+
+type GetUserByUsernameAndBankSampahCodeParams struct {
+	Username string
+	Code     string
+}
+
+func (q *Queries) GetUserByUsernameAndBankSampahCode(ctx context.Context, arg GetUserByUsernameAndBankSampahCodeParams) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByUsernameAndBankSampahCode, arg.Username, arg.Code)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.BankSampahID,
+		&i.Username,
+		&i.Email,
+		&i.PasswordHash,
+		&i.FullName,
+		&i.Role,
+		&i.Phone,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const markPasswordResetTokenUsed = `-- name: MarkPasswordResetTokenUsed :one
 UPDATE password_reset_tokens
 SET used_at = CURRENT_TIMESTAMP

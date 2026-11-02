@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/audyfh/setor-hijau-be/internal/auth"
+	"github.com/audyfh/setor-hijau-be/internal/material"
+	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
 	"github.com/audyfh/setor-hijau-be/internal/platform/db"
 	"github.com/audyfh/setor-hijau-be/internal/platform/db/sqlc"
@@ -57,17 +59,27 @@ func main() {
 	tenantService := tenant.NewService(database.Pool, tenantRepo, authService)
 	tenantHandler := tenant.NewHandler(tenantService)
 
+	nasabahRepo := nasabah.NewRepository(database.Pool, queries)
+	nasabahService := nasabah.NewService(nasabahRepo)
+	nasabahHandler := nasabah.NewHandler(nasabahService)
+
+	materialRepo := material.NewRepository(database.Pool, queries)
+	materialService := material.NewService(materialRepo)
+	materialHandler := material.NewHandler(materialService)
+
 	authMid := middleware.AuthMiddleware([]byte(cfg.JWTSecret))
 	rateLimiter := middleware.NewRateLimiter(30, 1*time.Minute)
 
 	engine := router.New(router.Options{
-		Config:        cfg,
-		Logger:        log,
-		DB:            database,
-		AuthHandler:   authHandler,
-		TenantHandler: tenantHandler,
-		AuthMid:       authMid,
-		RateLimiter:   rateLimiter,
+		Config:          cfg,
+		Logger:          log,
+		DB:              database,
+		AuthHandler:     authHandler,
+		TenantHandler:   tenantHandler,
+		NasabahHandler:  nasabahHandler,
+		MaterialHandler: materialHandler,
+		AuthMid:         authMid,
+		RateLimiter:     rateLimiter,
 	})
 
 	srv := &http.Server{

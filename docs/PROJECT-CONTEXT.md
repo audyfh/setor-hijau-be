@@ -65,7 +65,14 @@ _Update this section whenever work is handed off._
   - Auth module (`internal/auth`) with Argon2id password hashing, short-lived JWT, rotating refresh tokens stored hashed in DB, logout, and token-based password reset.
   - Security middlewares (`internal/platform/middleware`): `AuthMiddleware`, `RequireRole`, and in-memory `RateLimiter`.
   - Integration test harness and test suites in `test/integration/` verifying tenant isolation, token rotation, rate limiting, and password reset.
-- Next: M2 (Nasabah and master data), see `docs/plans/ROADMAP.md`.
+- Milestone M2 (nasabah and master data) is completed:
+  - ADR 0006 (`docs/decisions/0006-nasabah-auth-and-qr-pin-security.md`) and updated `docs/DATA-MODEL.md`.
+  - Migration `000003_m2_nasabah_master_data` for `nasabah_profiles`, `material_types`, and `material_prices`.
+  - Nasabah module (`internal/nasabah`): Pengelola CRUD, unguessable random 32-byte QR token generation, PIN management, QR lookup (deposit identification without creating a session).
+  - Master data module (`internal/material`): Recyclable waste types and append-only price history (`effective_from` / `effective_to`) in integer Rupiah.
+  - Auth module extensions (`internal/auth`): Multi-tenant login for Nasabah (`bank_sampah_code` + username + password), QR Code + PIN login (`POST /api/v1/auth/login/qr`), rate limiting & 15-minute temporary lockout after 5 failed PIN attempts, and strict enforcement that QR token alone cannot authenticate.
+  - Unit and integration tests covering QR/PIN authentication security, price history immutability, and tenant isolation for nasabah & materials.
+- Next: M3 (Deposits and balance), see `docs/plans/ROADMAP.md`.
 
 ## Open questions
 - Where CO2.js runs (frontend most likely) and how the API receives digital-footprint measurements: decide in M6.
