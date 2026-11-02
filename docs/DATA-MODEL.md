@@ -265,13 +265,86 @@ Append-only historical prices per kilogram in integer Rupiah (Hard Rule #3).
 
 ---
 
+## Milestone 3 Schema (Deposits & Balance)
+
+```mermaid
+erDiagram
+    BANK_SAMPAH ||--o{ DEPOSITS : "tenant scoped"
+    USERS ||--o{ DEPOSITS : "recorded for nasabah"
+    USERS ||--o{ DEPOSITS : "recorded by pengelola"
+    DEPOSITS ||--o{ DEPOSIT_LINES : "contains"
+    MATERIAL_TYPES ||--o{ DEPOSIT_LINES : "material type"
+
+    DEPOSITS {
+        uuid id PK
+        uuid bank_sampah_id FK
+        uuid nasabah_id FK
+        varchar idempotency_key
+        bigint total_weight_grams
+        bigint total_amount_idr
+        text notes
+        uuid recorded_by FK
+        timestamptz client_recorded_at
+        timestamptz created_at
+    }
+
+    DEPOSIT_LINES {
+        uuid id PK
+        uuid deposit_id FK
+        uuid material_type_id FK
+        bigint weight_grams
+        bigint price_per_kg_idr
+        bigint subtotal_idr
+        timestamptz created_at
+    }
+```
+
+### 8. `deposits`
+Immutable header record for waste deposits (Hard Rule #2 & Hard Rule #5).
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique deposit transaction ID |
+| `bank_sampah_id` | `UUID` | `NOT NULL REFERENCES bank_sampah(id) ON DELETE CASCADE` | Associated tenant |
+| `nasabah_id` | `UUID` | `NOT NULL REFERENCES users(id) ON DELETE RESTRICT` | Customer who deposited waste |
+| `idempotency_key` | `VARCHAR(64)` | `NOT NULL` | Client-generated UUID for offline deduplication |
+| `total_weight_grams` | `BIGINT` | `NOT NULL CHECK (total_weight_grams >= 0)` | Aggregated weight in integer grams |
+| `total_amount_idr` | `BIGINT` | `NOT NULL CHECK (total_amount_idr >= 0)` | Aggregated value in integer Rupiah |
+| `notes` | `TEXT` | `NULL` | Optional transaction notes |
+| `recorded_by` | `UUID` | `NOT NULL REFERENCES users(id) ON DELETE RESTRICT` | Officer/Pengelola who entered transaction |
+| `client_recorded_at` | `TIMESTAMPTZ` | `NOT NULL` | Time when physical deposit happened on device |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Server receipt and persistence timestamp |
+
+*Indexes and Constraints:*
+- `CONSTRAINT uq_deposits_bank_sampah_idempotency UNIQUE (bank_sampah_id, idempotency_key)`
+- `CREATE INDEX idx_deposits_bank_sampah ON deposits(bank_sampah_id);`
+- `CREATE INDEX idx_deposits_nasabah ON deposits(nasabah_id);`
+- `CREATE INDEX idx_deposits_bank_sampah_nasabah ON deposits(bank_sampah_id, nasabah_id);`
+- `CREATE INDEX idx_deposits_client_recorded ON deposits(bank_sampah_id, client_recorded_at DESC);`
+
+### 9. `deposit_lines`
+Immutable itemized waste lines with permanently snapshotted prices (Hard Rule #3 & Invariant #4).
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique line item ID |
+| `deposit_id` | `UUID` | `NOT NULL REFERENCES deposits(id) ON DELETE CASCADE` | Parent deposit transaction |
+| `material_type_id` | `UUID` | `NOT NULL REFERENCES material_types(id) ON DELETE RESTRICT` | Material reference |
+| `weight_grams` | `BIGINT` | `NOT NULL CHECK (weight_grams > 0)` | Weight in integer grams |
+| `price_per_kg_idr` | `BIGINT` | `NOT NULL CHECK (price_per_kg_idr >= 0)` | Historical price per kg snapshotted at `client_recorded_at` |
+| `subtotal_idr` | `BIGINT` | `NOT NULL CHECK (subtotal_idr >= 0)` | Subtotal: `(weight_grams * price_per_kg_idr + 500) / 1000` |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Line creation timestamp |
+
+*Indexes and Constraints:*
+- `CREATE INDEX idx_deposit_lines_deposit ON deposit_lines(deposit_id);`
+- `CREATE INDEX idx_deposit_lines_material ON deposit_lines(material_type_id);`
+
+---
+
 ## Preview: Subsequent Milestone Entities
 
 The following entities are planned for upcoming milestones and will be migrated incrementally:
 
-- **M3 (Deposits & Balance)**:
-  - `deposits`: Deposit transactions (`id`, `bank_sampah_id`, `nasabah_id`, `idempotency_key`, `total_amount_idr`, `client_recorded_at`, `created_at`).
-  - `deposit_lines`: Line items (`deposit_id`, `material_type_id`, `weight_grams`, `price_per_kg_idr`, `subtotal_idr`, `co2e_avoided_grams`).
 - **M4 (Carbon Ledger)**:
   - `emission_factors`: EPA WARM versioned factors (`id`, `material_code`, `factor_version`, `factor_source`, `co2e_per_gram`).
   - `carbon_ledger`: Append-only environmental journal (`id`, `bank_sampah_id`, `nasabah_id`, `deposit_id`, `factor_id`, `co2e_grams`, `entry_type`, `created_at`).

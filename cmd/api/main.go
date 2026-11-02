@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/audyfh/setor-hijau-be/internal/auth"
+	"github.com/audyfh/setor-hijau-be/internal/deposit"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
@@ -67,6 +68,10 @@ func main() {
 	materialService := material.NewService(materialRepo)
 	materialHandler := material.NewHandler(materialService)
 
+	depositRepo := deposit.NewRepository(database.Pool, queries)
+	depositService := deposit.NewService(depositRepo)
+	depositHandler := deposit.NewHandler(depositService)
+
 	authMid := middleware.AuthMiddleware([]byte(cfg.JWTSecret))
 	rateLimiter := middleware.NewRateLimiter(30, 1*time.Minute)
 
@@ -78,6 +83,7 @@ func main() {
 		TenantHandler:   tenantHandler,
 		NasabahHandler:  nasabahHandler,
 		MaterialHandler: materialHandler,
+		DepositHandler:  depositHandler,
 		AuthMid:         authMid,
 		RateLimiter:     rateLimiter,
 	})

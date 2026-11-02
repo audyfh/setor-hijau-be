@@ -72,7 +72,18 @@ _Update this section whenever work is handed off._
   - Master data module (`internal/material`): Recyclable waste types and append-only price history (`effective_from` / `effective_to`) in integer Rupiah.
   - Auth module extensions (`internal/auth`): Multi-tenant login for Nasabah (`bank_sampah_code` + username + password), QR Code + PIN login (`POST /api/v1/auth/login/qr`), rate limiting & 15-minute temporary lockout after 5 failed PIN attempts, and strict enforcement that QR token alone cannot authenticate.
   - Unit and integration tests covering QR/PIN authentication security, price history immutability, and tenant isolation for nasabah & materials.
-- Next: M3 (Deposits and balance), see `docs/plans/ROADMAP.md`.
+- Milestone M3 (deposits and balance) is completed:
+  - ADR 0007 (`docs/decisions/0007-deposit-idempotency-and-offline-sync.md`) and updated `docs/DATA-MODEL.md`.
+  - Database migration `000004_m3_deposits_balance` for `deposits` and `deposit_lines` with integer precision (grams and Rupiah) and unique `(bank_sampah_id, idempotency_key)` constraint.
+  - Deposit module (`internal/deposit`):
+    - Single deposit creation (`POST /api/v1/deposits`) with idempotent replay support (`HTTP 200 OK` on duplicate idempotency key).
+    - Batch offline sync endpoint (`POST /api/v1/deposits/sync`) for client offline queues.
+    - Historical price snapshotting at `client_recorded_at` with standard half-up integer rounding: `(weight_grams * price_per_kg_idr + 500) / 1000`.
+    - Struk digital endpoint (`GET /api/v1/deposits/:id/receipt`) with complete tenant, nasabah, pengelola, itemized lines, and balance summary.
+    - Derived balance calculation engine (`GET /api/v1/nasabah/me/balance` and `GET /api/v1/nasabah/:id/balance`) strictly derived from `SUM(total_amount_idr)`.
+    - Deposit history listings (`GET /api/v1/deposits`) with tenant isolation and nasabah self-scoping.
+  - Unit and integration tests verifying idempotency deduplication, price snapshotting over time, offline batch sync, struk digital generation, derived balance consistency, and multi-tenant isolation.
+- Next: M4 (Carbon Ledger), see `docs/plans/ROADMAP.md`.
 
 ## Open questions
 - Where CO2.js runs (frontend most likely) and how the API receives digital-footprint measurements: decide in M6.

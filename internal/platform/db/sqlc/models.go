@@ -24,6 +24,29 @@ type BankSampah struct {
 	UpdatedAt     pgtype.Timestamptz
 }
 
+type Deposit struct {
+	ID               pgtype.UUID
+	BankSampahID     pgtype.UUID
+	NasabahID        pgtype.UUID
+	IdempotencyKey   string
+	TotalWeightGrams int64
+	TotalAmountIdr   int64
+	Notes            pgtype.Text
+	RecordedBy       pgtype.UUID
+	ClientRecordedAt pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+}
+
+type DepositLine struct {
+	ID             pgtype.UUID
+	DepositID      pgtype.UUID
+	MaterialTypeID pgtype.UUID
+	WeightGrams    int64
+	PricePerKgIdr  int64
+	SubtotalIdr    int64
+	CreatedAt      pgtype.Timestamptz
+}
+
 type MaterialPrice struct {
 	ID             pgtype.UUID
 	MaterialTypeID pgtype.UUID

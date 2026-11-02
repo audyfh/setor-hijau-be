@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/audyfh/setor-hijau-be/internal/auth"
+	"github.com/audyfh/setor-hijau-be/internal/deposit"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
@@ -25,6 +26,7 @@ type Options struct {
 	TenantHandler   *tenant.Handler
 	NasabahHandler  *nasabah.Handler
 	MaterialHandler *material.Handler
+	DepositHandler  *deposit.Handler
 	AuthMid         gin.HandlerFunc
 	RateLimiter     *middleware.RateLimiter
 }
@@ -86,7 +88,7 @@ func New(opts Options) *gin.Engine {
 	})
 
 	// API v1 routes
-	if opts.AuthHandler != nil || opts.TenantHandler != nil || opts.NasabahHandler != nil || opts.MaterialHandler != nil {
+	if opts.AuthHandler != nil || opts.TenantHandler != nil || opts.NasabahHandler != nil || opts.MaterialHandler != nil || opts.DepositHandler != nil {
 		v1 := r.Group("/api/v1")
 		if opts.TenantHandler != nil {
 			opts.TenantHandler.RegisterRoutes(v1, opts.AuthMid)
@@ -99,6 +101,9 @@ func New(opts Options) *gin.Engine {
 		}
 		if opts.MaterialHandler != nil {
 			opts.MaterialHandler.RegisterRoutes(v1, opts.AuthMid)
+		}
+		if opts.DepositHandler != nil {
+			opts.DepositHandler.RegisterRoutes(v1, opts.AuthMid)
 		}
 	}
 

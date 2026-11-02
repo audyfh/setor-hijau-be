@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
+	"github.com/audyfh/setor-hijau-be/internal/deposit"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/tenant"
 	"github.com/audyfh/setor-hijau-be/test/integration"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -218,6 +221,78 @@ func TestTenantIsolation(t *testing.T) {
 	err = json.NewDecoder(respListMatB.Body).Decode(&matListB)
 	require.NoError(t, err)
 	assert.Empty(t, matListB)
+
+	// 10. Hard Rule #1: Tenant Isolation for Deposits and Balances
+	// Tenant A records a deposit
+	createDepA := deposit.CreateDepositRequest{
+		NasabahID:        nasabahAID,
+		IdempotencyKey:   uuid.New().String(),
+		ClientRecordedAt: time.Now().UTC(),
+		Lines: []deposit.CreateDepositLineRequest{
+			{MaterialTypeID: materialAID, WeightGrams: 2000},
+		},
+	}
+	bodyDepA, _ := json.Marshal(createDepA)
+	postDepA, _ := http.NewRequest(http.MethodPost, harness.Server.URL+"/api/v1/deposits", bytes.NewReader(bodyDepA))
+	postDepA.Header.Set("Authorization", "Bearer "+tenantAResp.Tokens.AccessToken)
+	postDepA.Header.Set("Content-Type", "application/json")
+	respDepA, err := clientA.Do(postDepA)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, respDepA.StatusCode)
+
+	var depAResp deposit.DepositResponse
+	err = json.NewDecoder(respDepA.Body).Decode(&depAResp)
+	require.NoError(t, err)
+	depositAID := depAResp.ID
+
+	// Tenant B tries to access Deposit A -> 404 Not Found
+	getDepB, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/deposits/%s", harness.Server.URL, depositAID), nil)
+	getDepB.Header.Set("Authorization", "Bearer "+tenantBResp.Tokens.AccessToken)
+	respGetDepB, err := clientB.Do(getDepB)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, respGetDepB.StatusCode)
+
+	// Tenant B tries to access Receipt A -> 404 Not Found
+	getReceiptB, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/deposits/%s/receipt", harness.Server.URL, depositAID), nil)
+	getReceiptB.Header.Set("Authorization", "Bearer "+tenantBResp.Tokens.AccessToken)
+	respGetReceiptB, err := clientB.Do(getReceiptB)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, respGetReceiptB.StatusCode)
+
+	// Tenant B listing deposits only sees Tenant B deposits (0 items)
+	listDepB, _ := http.NewRequest(http.MethodGet, harness.Server.URL+"/api/v1/deposits", nil)
+	listDepB.Header.Set("Authorization", "Bearer "+tenantBResp.Tokens.AccessToken)
+	respListDepB, err := clientB.Do(listDepB)
+	require.NoError(t, err)
+	var depListB deposit.DepositListResponse
+	err = json.NewDecoder(respListDepB.Body).Decode(&depListB)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), depListB.TotalCount)
+	assert.Empty(t, depListB.Data)
+
+	// Tenant B checks balance of Nasabah A -> 404 Not Found
+	getBalanceB, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/nasabah/%s/balance", harness.Server.URL, nasabahAID), nil)
+	getBalanceB.Header.Set("Authorization", "Bearer "+tenantBResp.Tokens.AccessToken)
+	respGetBalanceB, err := clientB.Do(getBalanceB)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, respGetBalanceB.StatusCode)
+
+	// Tenant B tries to record deposit for Nasabah A -> 404 Not Found
+	createDepBForA := deposit.CreateDepositRequest{
+		NasabahID:        nasabahAID,
+		IdempotencyKey:   uuid.New().String(),
+		ClientRecordedAt: time.Now().UTC(),
+		Lines: []deposit.CreateDepositLineRequest{
+			{MaterialTypeID: materialAID, WeightGrams: 1000},
+		},
+	}
+	bodyDepBForA, _ := json.Marshal(createDepBForA)
+	postDepBForA, _ := http.NewRequest(http.MethodPost, harness.Server.URL+"/api/v1/deposits", bytes.NewReader(bodyDepBForA))
+	postDepBForA.Header.Set("Authorization", "Bearer "+tenantBResp.Tokens.AccessToken)
+	postDepBForA.Header.Set("Content-Type", "application/json")
+	respDepBForA, err := clientB.Do(postDepBForA)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, respDepBForA.StatusCode)
 
 	// Tenant A sees Tenant A, Tenant B sees Tenant B. Absolute isolation verified!
 }
