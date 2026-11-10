@@ -10,6 +10,7 @@ import (
 	"github.com/audyfh/setor-hijau-be/internal/carbon"
 	"github.com/audyfh/setor-hijau-be/internal/cashbook"
 	"github.com/audyfh/setor-hijau-be/internal/deposit"
+	"github.com/audyfh/setor-hijau-be/internal/impact"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
@@ -33,6 +34,7 @@ type Options struct {
 	CarbonHandler   *carbon.Handler
 	CashbookHandler *cashbook.Handler
 	ReportHandler   *report.Handler
+	ImpactHandler   *impact.Handler
 	AuthMid         gin.HandlerFunc
 	RateLimiter     *middleware.RateLimiter
 }
@@ -119,6 +121,9 @@ func New(opts Options) *gin.Engine {
 		}
 		if opts.ReportHandler != nil {
 			opts.ReportHandler.RegisterRoutes(v1, opts.AuthMid)
+		}
+		if opts.ImpactHandler != nil {
+			opts.ImpactHandler.RegisterRoutes(v1, opts.AuthMid)
 		}
 	}
 

@@ -108,10 +108,22 @@ _Update this section whenever work is handed off._
     - Official CSV export (`GET /api/v1/reports/monthly/csv`) formatted with UTF-8 BOM (`\xef\xbb\xbf`) for Indonesian Excel compatibility.
     - Pure Go PDF export (`GET /api/v1/reports/monthly/pdf`) using `jung-kurt/gofpdf` adhering to Green Software Engineering (sub-second rendering, ~30 KB payload, zero headless browser/Chromium bloat).
   - Tests passing: unit tests in `internal/cashbook` and `internal/report`, and comprehensive integration tests in `test/integration/cashbook_test.go` and `test/integration/report_test.go`. Total suite: 72 tests across 18 packages passing, `go vet` clean.
-- Next: M6 (Net Impact Meter and Public Method Page), see `docs/plans/ROADMAP.md`.
+- Milestone M6 (net impact meter & public method page) is completed:
+  - ADR 0010 (`docs/decisions/0010-digital-footprint-and-net-impact-meter.md`) and updated `docs/DATA-MODEL.md`.
+  - Updated `docs/CARBON-METHOD.md` (Section 8: SWDM v4, Section 9: Net Impact Meter, and segment breakdown).
+  - Database migration `000007_m6_net_impact` creating `digital_footprint_measurements` table with optional tenant linkage, session ID, route, bytes transferred, and integer emission calculations.
+  - Impact module (`internal/impact`):
+    - SWDM v4 deterministic integer math: 0.072 kWh/GB * 494 g/kWh = 35.568 g CO2e/GB = 35,568,000 micrograms CO2e/GB.
+    - System segments breakdown: Data Center (15%), Network (14%), User Device (52%), Embodied Hardware (19%).
+    - Telemetry ingestion endpoint (`POST /api/v1/public/impact/telemetry`) accepting client data byte transfer reports with zero client authentication required.
+    - Public platform impact endpoint (`GET /api/v1/public/impact`) and public tenant impact endpoint (`GET /api/v1/public/impact/tenants/:code`) returning Avoided CO2e, Digital Footprint, Net Impact, Sustainability Ratio, and segment breakdowns.
+    - Authenticated tenant impact endpoint (`GET /api/v1/impact/tenant`) for logged-in Pengelola and Nasabah.
+    - Public method and citations endpoint (`GET /api/v1/public/methods`) listing academic statements, all active WARM v16 emission factors, SWDM v4 constants, and explicit formulas for thesis defensibility.
+  - Tests passing: 8 unit tests in `internal/impact/service_test.go` and comprehensive integration tests in `test/integration/impact_test.go`. Total suite: 82 tests across 19 packages passing, `go vet` clean.
+- Next: M7 (Deploy and Portability: Cloud Run, Cloud SQL, Supabase fallback, and verification), see `docs/plans/ROADMAP.md`.
 
 ## Open questions
-- Where CO2.js runs (frontend most likely) and how the API receives digital-footprint measurements: decide in M6.
+- Digital footprint measurement model: resolved in ADR 0010 (SWDM v4 with client byte telemetry and server-side deterministic integer math).
 - Monorepo vs separate repos for BE and FE.
 - Exact WARM material list and mapping to Indonesian waste categories: resolved in `docs/CARBON-METHOD.md`.
 

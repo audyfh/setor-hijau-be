@@ -15,6 +15,7 @@ import (
 	"github.com/audyfh/setor-hijau-be/internal/carbon"
 	"github.com/audyfh/setor-hijau-be/internal/cashbook"
 	"github.com/audyfh/setor-hijau-be/internal/deposit"
+	"github.com/audyfh/setor-hijau-be/internal/impact"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
@@ -39,6 +40,7 @@ type TestHarness struct {
 	CarbonService   carbon.Service
 	CashbookService cashbook.Service
 	ReportService   report.Service
+	ImpactService   impact.Service
 }
 
 // SetupTestHarness initializes a connected database, runs migrations, and starts a test server.
@@ -124,6 +126,10 @@ func SetupTestHarness(t *testing.T) *TestHarness {
 	reportService := report.NewService(reportRepo)
 	reportHandler := report.NewHandler(reportService)
 
+	impactRepo := impact.NewRepository(database.Pool)
+	impactService := impact.NewService(impactRepo)
+	impactHandler := impact.NewHandler(impactService)
+
 	authMid := middleware.AuthMiddleware([]byte(cfg.JWTSecret))
 	rateLimiter := middleware.NewRateLimiter(100, 1*time.Minute)
 
@@ -139,6 +145,7 @@ func SetupTestHarness(t *testing.T) *TestHarness {
 		CarbonHandler:   carbonHandler,
 		CashbookHandler: cashbookHandler,
 		ReportHandler:   reportHandler,
+		ImpactHandler:   impactHandler,
 		AuthMid:         authMid,
 		RateLimiter:     rateLimiter,
 	})
@@ -158,6 +165,7 @@ func SetupTestHarness(t *testing.T) *TestHarness {
 		CarbonService:   carbonService,
 		CashbookService: cashbookService,
 		ReportService:   reportService,
+		ImpactService:   impactService,
 	}
 }
 
@@ -166,7 +174,7 @@ func cleanTables(t *testing.T, database *db.DB) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := database.Pool.Exec(ctx, "TRUNCATE TABLE bank_sampah CASCADE")
+	_, err := database.Pool.Exec(ctx, "TRUNCATE TABLE digital_footprint_measurements, bank_sampah CASCADE")
 	if err != nil {
 		t.Fatalf("failed to truncate test tables: %v", err)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/audyfh/setor-hijau-be/internal/carbon"
 	"github.com/audyfh/setor-hijau-be/internal/cashbook"
 	"github.com/audyfh/setor-hijau-be/internal/deposit"
+	"github.com/audyfh/setor-hijau-be/internal/impact"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
@@ -87,6 +88,10 @@ func main() {
 	reportService := report.NewService(reportRepo)
 	reportHandler := report.NewHandler(reportService)
 
+	impactRepo := impact.NewRepository(database.Pool)
+	impactService := impact.NewService(impactRepo)
+	impactHandler := impact.NewHandler(impactService)
+
 	authMid := middleware.AuthMiddleware([]byte(cfg.JWTSecret))
 	rateLimiter := middleware.NewRateLimiter(30, 1*time.Minute)
 
@@ -102,6 +107,7 @@ func main() {
 		CarbonHandler:   carbonHandler,
 		CashbookHandler: cashbookHandler,
 		ReportHandler:   reportHandler,
+		ImpactHandler:   impactHandler,
 		AuthMid:         authMid,
 		RateLimiter:     rateLimiter,
 	})

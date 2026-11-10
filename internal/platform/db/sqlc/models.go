@@ -77,6 +77,21 @@ type DepositLine struct {
 	CreatedAt      pgtype.Timestamptz
 }
 
+type DigitalFootprintMeasurement struct {
+	ID                   pgtype.UUID
+	BankSampahID         pgtype.UUID
+	SessionID            pgtype.Text
+	PagePath             string
+	DataBytesTransferred int64
+	Co2eMicrograms       int64
+	Co2eGrams            int64
+	SwdmVersion          string
+	SwdmModelSource      string
+	VisitorType          string
+	ClientTimestamp      pgtype.Timestamptz
+	CreatedAt            pgtype.Timestamptz
+}
+
 type EmissionFactor struct {
 	ID            pgtype.UUID
 	MaterialCode  string

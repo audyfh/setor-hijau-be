@@ -507,11 +507,25 @@ Append-only physical cash treasury ledger for the bank sampah (Hard Rules #1, #2
 - `CREATE INDEX idx_cashbook_entries_category ON cashbook_entries(bank_sampah_id, category);`
 - Trigger append-only: prevents `UPDATE` and `DELETE`.
 
----
+### 16. `digital_footprint_measurements`
+Digital carbon footprint measurements calculated via Sustainable Web Design Model (SWDM) v4 (ADR 0010).
 
-## Preview: Subsequent Milestone Entities
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique measurement ID |
+| `bank_sampah_id` | `UUID` | `NULL REFERENCES bank_sampah(id) ON DELETE CASCADE` | Optional tenant attribution (NULL for general platform traffic) |
+| `session_id` | `VARCHAR(64)` | `NULL` | Client session identifier |
+| `page_path` | `VARCHAR(255)` | `NOT NULL` | Requested web path / route |
+| `data_bytes_transferred` | `BIGINT` | `NOT NULL CHECK (data_bytes_transferred >= 0)` | Network payload transferred in bytes |
+| `co2e_micrograms` | `BIGINT` | `NOT NULL CHECK (co2e_micrograms >= 0)` | Calculated emissions in integer micrograms ($\mu\text{g } CO_2e$) |
+| `co2e_grams` | `BIGINT` | `NOT NULL CHECK (co2e_grams >= 0)` | Calculated emissions in integer grams ($g CO_2e$) |
+| `swdm_version` | `VARCHAR(32)` | `NOT NULL DEFAULT 'SWDM v4'` | Standard model version |
+| `swdm_model_source` | `TEXT` | `NOT NULL` | Official model citation |
+| `visitor_type` | `VARCHAR(16)` | `NOT NULL DEFAULT 'new'` | Visitor type: `'new'` or `'returning'` |
+| `client_timestamp` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Time client measured the data |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Ingestion timestamp |
 
-The following entities are planned for upcoming milestones and will be migrated incrementally:
-
-- **M6 (Net Impact Meter)**:
-  - `digital_footprint_measurements`: SWDM v4 web digital footprint logs (`id`, `data_bytes_transferred`, `co2e_grams`, `period_start`, `period_end`).
+*Indexes:*
+- `CREATE INDEX idx_digital_footprint_bank_sampah ON digital_footprint_measurements(bank_sampah_id);`
+- `CREATE INDEX idx_digital_footprint_created_at ON digital_footprint_measurements(created_at DESC);`
+- `CREATE INDEX idx_digital_footprint_path ON digital_footprint_measurements(page_path);`

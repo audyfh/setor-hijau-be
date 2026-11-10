@@ -113,3 +113,44 @@ Untuk memastikan prinsip *Green Software Engineering* dan integritas audit akade
 1. **Faktor Berbasis Amerika Serikat**: Faktor WARM v16 dikembangkan oleh US EPA berdasarkan bauran energi listrik dan efisiensi industri manufaktur di AS. Karena data Life Cycle Assessment (LCA) spesifik pabrik daur ulang di Indonesia belum tersedia secara komprehensif di tingkat nasional, angka ini digunakan sebagai **estimasi ilmiah terbaik (*best available scientific estimate*)**.
 2. **Aturan Penamaan Estimasi**: Sesuai **Hard Rule #9**, angka karbon tidak boleh disajikan sebagai pengukuran absolut/pasti. Seluruh DTO API, parameter, dan antarmuka pengguna wajib menggunakan kata kunci estimasi (misalnya `estimated_co2e_avoided_grams`).
 3. **Eksklusi Sampah Organik**: Penanganan sampah organik (pengomposan/maggot) tidak dicakup dalam kalkulasi ini karena dinamika dekomposisi organik memerlukan parameter kelembapan dan rasio C/N lokal yang berbeda.
+
+---
+
+## 8. Model Jejak Karbon Digital Aplikasi: SWDM v4
+
+Sesuai komitmen *Green Software Engineering*, pengoperasian aplikasi web Setor Hijau diakui mengonsumsi energi listrik pada pusat data (*data center*), jaringan transmisi internet (*network*), dan perangkat pengguna (*user device*).
+
+### 8.1. Koefisien Sustainable Web Design Model (SWDM) v4
+Setor Hijau mengadopsi standar **SWDM v4** (SustainableWebDesign.org / CO2.js >= 0.18):
+- **Konsumsi Energi Total**: $0,072 \text{ kWh / GB}$ data yang ditransfer.
+  - Energi Operasional: $0,057 \text{ kWh / GB}$
+  - Energi Terwujud (*Embodied Hardware Energy*): $0,015 \text{ kWh / GB}$
+- **Intensitas Emisi Listrik Rata-rata Global**: $494 \text{ g } CO_2e / \text{kWh}$.
+- **Konversi Emisi per Gigabyte**:
+  $$E_{\text{GB}} = 0,072 \times 494 = 35,568 \text{ g } CO_2e / \text{GB}$$
+- **Pembagian Segmen Sistem (System Segments)**:
+  - Pusat Data: $15\%$
+  - Jaringan Transmisi: $14\%$
+  - Perangkat Pengguna: $52\%$
+  - Manufaktur Perangkat Keras: $19\%$
+
+### 8.2. Formula Integer Micrograms Tanpa Float (Hard Rule #3)
+Untuk transfer data sejumlah $B$ byte:
+$$\text{co2e\_micrograms} = \left\lfloor \frac{B \times 35.568 + 500.000}{1.000.000} \right\rfloor$$
+$$\text{co2e\_grams} = \left\lfloor \frac{\text{co2e\_micrograms} + 500.000}{1.000.000} \right\rfloor$$
+
+Contoh hand-verified:
+- Transfer $1.000.000 \text{ byte}$ ($1\text{ MB}$): $(1.000.000 \times 35.568 + 500.000) / 1.000.000 = 35.568 \mu\text{g } CO_2e \approx 0,036 \text{ g } CO_2e$.
+- Transfer $100.000.000 \text{ byte}$ ($100\text{ MB}$): $(100.000.000 \times 35.568 + 500.000) / 1.000.000 = 3.556.800 \mu\text{g } CO_2e \to 4 \text{ g } CO_2e$.
+
+---
+
+## 9. Net Impact Meter & Rasio Keberlanjutan
+
+**Net Impact Meter** menghitung manfaat iklim bersih yang dihasilkan oleh Setor Hijau:
+$$\text{Net Impact } (g CO_2e) = \sum \text{Estimated Avoided } CO_2e \text{ (WARM v16)} - \sum \text{Estimated Digital Footprint } CO_2e \text{ (SWDM v4)}$$
+
+### Rasio Keberlanjutan (*Sustainability Ratio / Multiplier*):
+$$\text{Sustainability Ratio} = \frac{\sum \text{Avoided } CO_2e}{\sum \text{Digital Footprint } CO_2e}$$
+Rasio ini memberikan gambaran objektif bagi publik dan akademisi bahwa pengalihan sampah fisik menghasilkan manfaat iklim yang jauh lebih besar (ratusan hingga ribuan kali lipat) dibandingkan emisi listrik yang dikonsumsi oleh aplikasi web.
+
