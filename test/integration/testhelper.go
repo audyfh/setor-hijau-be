@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/audyfh/setor-hijau-be/internal/auth"
+	"github.com/audyfh/setor-hijau-be/internal/carbon"
 	"github.com/audyfh/setor-hijau-be/internal/deposit"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
@@ -29,10 +30,11 @@ import (
 
 // TestHarness bundles test infrastructure for integration tests.
 type TestHarness struct {
-	DB          *db.DB
-	Server      *httptest.Server
-	Config      *config.Config
-	AuthService auth.Service
+	DB            *db.DB
+	Server        *httptest.Server
+	Config        *config.Config
+	AuthService   auth.Service
+	CarbonService carbon.Service
 }
 
 // SetupTestHarness initializes a connected database, runs migrations, and starts a test server.
@@ -106,6 +108,10 @@ func SetupTestHarness(t *testing.T) *TestHarness {
 	depositService := deposit.NewService(depositRepo)
 	depositHandler := deposit.NewHandler(depositService)
 
+	carbonRepo := carbon.NewRepository(database.Pool, queries)
+	carbonService := carbon.NewService(carbonRepo)
+	carbonHandler := carbon.NewHandler(carbonService)
+
 	authMid := middleware.AuthMiddleware([]byte(cfg.JWTSecret))
 	rateLimiter := middleware.NewRateLimiter(100, 1*time.Minute)
 
@@ -118,6 +124,7 @@ func SetupTestHarness(t *testing.T) *TestHarness {
 		NasabahHandler:  nasabahHandler,
 		MaterialHandler: materialHandler,
 		DepositHandler:  depositHandler,
+		CarbonHandler:   carbonHandler,
 		AuthMid:         authMid,
 		RateLimiter:     rateLimiter,
 	})
@@ -130,10 +137,11 @@ func SetupTestHarness(t *testing.T) *TestHarness {
 	})
 
 	return &TestHarness{
-		DB:          database,
-		Server:      server,
-		Config:      cfg,
-		AuthService: authService,
+		DB:            database,
+		Server:        server,
+		Config:        cfg,
+		AuthService:   authService,
+		CarbonService: carbonService,
 	}
 }
 

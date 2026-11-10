@@ -139,7 +139,8 @@ const getDepositByID = `-- name: GetDepositByID :one
 SELECT d.id, d.bank_sampah_id, d.nasabah_id, d.idempotency_key, d.total_weight_grams, d.total_amount_idr, d.notes, d.recorded_by, d.client_recorded_at, d.created_at, 
        u_nasabah.full_name AS nasabah_name,
        u_nasabah.username AS nasabah_username,
-       u_recorded.full_name AS recorded_by_name
+       u_recorded.full_name AS recorded_by_name,
+       COALESCE((SELECT SUM(co2e_grams) FROM carbon_ledger WHERE deposit_id = d.id), 0)::bigint AS total_estimated_co2e_avoided_grams
 FROM deposits d
 JOIN users u_nasabah ON d.nasabah_id = u_nasabah.id
 JOIN users u_recorded ON d.recorded_by = u_recorded.id
@@ -152,19 +153,20 @@ type GetDepositByIDParams struct {
 }
 
 type GetDepositByIDRow struct {
-	ID               pgtype.UUID
-	BankSampahID     pgtype.UUID
-	NasabahID        pgtype.UUID
-	IdempotencyKey   string
-	TotalWeightGrams int64
-	TotalAmountIdr   int64
-	Notes            pgtype.Text
-	RecordedBy       pgtype.UUID
-	ClientRecordedAt pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	NasabahName      string
-	NasabahUsername  string
-	RecordedByName   string
+	ID                             pgtype.UUID
+	BankSampahID                   pgtype.UUID
+	NasabahID                      pgtype.UUID
+	IdempotencyKey                 string
+	TotalWeightGrams               int64
+	TotalAmountIdr                 int64
+	Notes                          pgtype.Text
+	RecordedBy                     pgtype.UUID
+	ClientRecordedAt               pgtype.Timestamptz
+	CreatedAt                      pgtype.Timestamptz
+	NasabahName                    string
+	NasabahUsername                string
+	RecordedByName                 string
+	TotalEstimatedCo2eAvoidedGrams int64
 }
 
 func (q *Queries) GetDepositByID(ctx context.Context, arg GetDepositByIDParams) (GetDepositByIDRow, error) {
@@ -184,6 +186,7 @@ func (q *Queries) GetDepositByID(ctx context.Context, arg GetDepositByIDParams) 
 		&i.NasabahName,
 		&i.NasabahUsername,
 		&i.RecordedByName,
+		&i.TotalEstimatedCo2eAvoidedGrams,
 	)
 	return i, err
 }
@@ -222,24 +225,31 @@ const getDepositLinesByDepositID = `-- name: GetDepositLinesByDepositID :many
 SELECT dl.id, dl.deposit_id, dl.material_type_id, dl.weight_grams, dl.price_per_kg_idr, dl.subtotal_idr, dl.created_at,
        mt.name AS material_name,
        mt.category AS material_category,
-       mt.unit AS material_unit
+       mt.unit AS material_unit,
+       COALESCE(cl.co2e_grams, 0)::bigint AS estimated_co2e_avoided_grams,
+       COALESCE(cl.factor_version, '')::varchar AS factor_version,
+       COALESCE(cl.factor_source, '')::text AS factor_source
 FROM deposit_lines dl
 JOIN material_types mt ON dl.material_type_id = mt.id
+LEFT JOIN carbon_ledger cl ON dl.id = cl.deposit_line_id
 WHERE dl.deposit_id = $1
 ORDER BY dl.created_at ASC
 `
 
 type GetDepositLinesByDepositIDRow struct {
-	ID               pgtype.UUID
-	DepositID        pgtype.UUID
-	MaterialTypeID   pgtype.UUID
-	WeightGrams      int64
-	PricePerKgIdr    int64
-	SubtotalIdr      int64
-	CreatedAt        pgtype.Timestamptz
-	MaterialName     string
-	MaterialCategory string
-	MaterialUnit     string
+	ID                        pgtype.UUID
+	DepositID                 pgtype.UUID
+	MaterialTypeID            pgtype.UUID
+	WeightGrams               int64
+	PricePerKgIdr             int64
+	SubtotalIdr               int64
+	CreatedAt                 pgtype.Timestamptz
+	MaterialName              string
+	MaterialCategory          string
+	MaterialUnit              string
+	EstimatedCo2eAvoidedGrams int64
+	FactorVersion             string
+	FactorSource              string
 }
 
 func (q *Queries) GetDepositLinesByDepositID(ctx context.Context, depositID pgtype.UUID) ([]GetDepositLinesByDepositIDRow, error) {
@@ -262,6 +272,9 @@ func (q *Queries) GetDepositLinesByDepositID(ctx context.Context, depositID pgty
 			&i.MaterialName,
 			&i.MaterialCategory,
 			&i.MaterialUnit,
+			&i.EstimatedCo2eAvoidedGrams,
+			&i.FactorVersion,
+			&i.FactorSource,
 		); err != nil {
 			return nil, err
 		}
@@ -283,6 +296,7 @@ SELECT d.id AS deposit_id,
        d.notes,
        d.client_recorded_at,
        d.created_at,
+       COALESCE((SELECT SUM(co2e_grams) FROM carbon_ledger WHERE deposit_id = d.id), 0)::bigint AS total_estimated_co2e_avoided_grams,
        bs.name AS bank_sampah_name,
        bs.code AS bank_sampah_code,
        bs.address AS bank_sampah_address,
@@ -313,31 +327,32 @@ type GetDepositReceiptDetailsParams struct {
 }
 
 type GetDepositReceiptDetailsRow struct {
-	DepositID               pgtype.UUID
-	BankSampahID            pgtype.UUID
-	NasabahID               pgtype.UUID
-	IdempotencyKey          string
-	TotalWeightGrams        int64
-	TotalAmountIdr          int64
-	Notes                   pgtype.Text
-	ClientRecordedAt        pgtype.Timestamptz
-	CreatedAt               pgtype.Timestamptz
-	BankSampahName          string
-	BankSampahCode          string
-	BankSampahAddress       string
-	BankSampahRw            string
-	BankSampahRt            pgtype.Text
-	BankSampahKelurahan     string
-	BankSampahKecamatan     string
-	BankSampahKabupatenKota string
-	BankSampahContactPhone  pgtype.Text
-	NasabahName             string
-	NasabahUsername         string
-	NasabahRw               string
-	NasabahRt               pgtype.Text
-	NasabahPhone            pgtype.Text
-	RecordedByID            pgtype.UUID
-	RecordedByName          string
+	DepositID                      pgtype.UUID
+	BankSampahID                   pgtype.UUID
+	NasabahID                      pgtype.UUID
+	IdempotencyKey                 string
+	TotalWeightGrams               int64
+	TotalAmountIdr                 int64
+	Notes                          pgtype.Text
+	ClientRecordedAt               pgtype.Timestamptz
+	CreatedAt                      pgtype.Timestamptz
+	TotalEstimatedCo2eAvoidedGrams int64
+	BankSampahName                 string
+	BankSampahCode                 string
+	BankSampahAddress              string
+	BankSampahRw                   string
+	BankSampahRt                   pgtype.Text
+	BankSampahKelurahan            string
+	BankSampahKecamatan            string
+	BankSampahKabupatenKota        string
+	BankSampahContactPhone         pgtype.Text
+	NasabahName                    string
+	NasabahUsername                string
+	NasabahRw                      string
+	NasabahRt                      pgtype.Text
+	NasabahPhone                   pgtype.Text
+	RecordedByID                   pgtype.UUID
+	RecordedByName                 string
 }
 
 func (q *Queries) GetDepositReceiptDetails(ctx context.Context, arg GetDepositReceiptDetailsParams) (GetDepositReceiptDetailsRow, error) {
@@ -353,6 +368,7 @@ func (q *Queries) GetDepositReceiptDetails(ctx context.Context, arg GetDepositRe
 		&i.Notes,
 		&i.ClientRecordedAt,
 		&i.CreatedAt,
+		&i.TotalEstimatedCo2eAvoidedGrams,
 		&i.BankSampahName,
 		&i.BankSampahCode,
 		&i.BankSampahAddress,
@@ -379,14 +395,28 @@ SELECT mt.id AS material_id,
        mt.category AS material_category,
        mt.unit AS material_unit,
        mt.is_active AS material_is_active,
+       mt.emission_factor_id,
+       ef.material_code AS factor_material_code,
+       ef.name AS factor_name,
+       ef.factor_version,
+       ef.factor_source,
+       ef.co2e_factor_ppm,
        mp.price_per_kg_idr
 FROM material_types mt
 LEFT JOIN material_prices mp ON mt.id = mp.material_type_id
   AND mp.bank_sampah_id = $1
-  AND mp.effective_from <= $2
-  AND (mp.effective_to IS NULL OR mp.effective_to > $2)
+  AND mp.id = (
+      COALESCE(
+          (SELECT p1.id FROM material_prices p1 
+           WHERE p1.material_type_id = mt.id AND p1.bank_sampah_id = $1 AND p1.effective_from <= $2 AND (p1.effective_to IS NULL OR p1.effective_to > $2)
+           ORDER BY p1.effective_from DESC LIMIT 1),
+          (SELECT p2.id FROM material_prices p2 
+           WHERE p2.material_type_id = mt.id AND p2.bank_sampah_id = $1
+           ORDER BY p2.effective_from ASC LIMIT 1)
+      )
+  )
+LEFT JOIN emission_factors ef ON mt.emission_factor_id = ef.id
 WHERE mt.id = $3 AND mt.bank_sampah_id = $1
-ORDER BY mp.effective_from DESC
 LIMIT 1
 `
 
@@ -397,12 +427,18 @@ type GetMaterialPriceAtTimeParams struct {
 }
 
 type GetMaterialPriceAtTimeRow struct {
-	MaterialID       pgtype.UUID
-	MaterialName     string
-	MaterialCategory string
-	MaterialUnit     string
-	MaterialIsActive bool
-	PricePerKgIdr    pgtype.Int8
+	MaterialID         pgtype.UUID
+	MaterialName       string
+	MaterialCategory   string
+	MaterialUnit       string
+	MaterialIsActive   bool
+	EmissionFactorID   pgtype.UUID
+	FactorMaterialCode pgtype.Text
+	FactorName         pgtype.Text
+	FactorVersion      pgtype.Text
+	FactorSource       pgtype.Text
+	Co2eFactorPpm      pgtype.Int8
+	PricePerKgIdr      pgtype.Int8
 }
 
 func (q *Queries) GetMaterialPriceAtTime(ctx context.Context, arg GetMaterialPriceAtTimeParams) (GetMaterialPriceAtTimeRow, error) {
@@ -414,6 +450,12 @@ func (q *Queries) GetMaterialPriceAtTime(ctx context.Context, arg GetMaterialPri
 		&i.MaterialCategory,
 		&i.MaterialUnit,
 		&i.MaterialIsActive,
+		&i.EmissionFactorID,
+		&i.FactorMaterialCode,
+		&i.FactorName,
+		&i.FactorVersion,
+		&i.FactorSource,
+		&i.Co2eFactorPpm,
 		&i.PricePerKgIdr,
 	)
 	return i, err
@@ -457,7 +499,8 @@ const listDepositsByTenant = `-- name: ListDepositsByTenant :many
 SELECT d.id, d.bank_sampah_id, d.nasabah_id, d.idempotency_key, d.total_weight_grams, d.total_amount_idr, d.notes, d.recorded_by, d.client_recorded_at, d.created_at,
        u_nasabah.full_name AS nasabah_name,
        u_nasabah.username AS nasabah_username,
-       u_recorded.full_name AS recorded_by_name
+       u_recorded.full_name AS recorded_by_name,
+       COALESCE((SELECT SUM(co2e_grams) FROM carbon_ledger WHERE deposit_id = d.id), 0)::bigint AS total_estimated_co2e_avoided_grams
 FROM deposits d
 JOIN users u_nasabah ON d.nasabah_id = u_nasabah.id
 JOIN users u_recorded ON d.recorded_by = u_recorded.id
@@ -479,19 +522,20 @@ type ListDepositsByTenantParams struct {
 }
 
 type ListDepositsByTenantRow struct {
-	ID               pgtype.UUID
-	BankSampahID     pgtype.UUID
-	NasabahID        pgtype.UUID
-	IdempotencyKey   string
-	TotalWeightGrams int64
-	TotalAmountIdr   int64
-	Notes            pgtype.Text
-	RecordedBy       pgtype.UUID
-	ClientRecordedAt pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	NasabahName      string
-	NasabahUsername  string
-	RecordedByName   string
+	ID                             pgtype.UUID
+	BankSampahID                   pgtype.UUID
+	NasabahID                      pgtype.UUID
+	IdempotencyKey                 string
+	TotalWeightGrams               int64
+	TotalAmountIdr                 int64
+	Notes                          pgtype.Text
+	RecordedBy                     pgtype.UUID
+	ClientRecordedAt               pgtype.Timestamptz
+	CreatedAt                      pgtype.Timestamptz
+	NasabahName                    string
+	NasabahUsername                string
+	RecordedByName                 string
+	TotalEstimatedCo2eAvoidedGrams int64
 }
 
 func (q *Queries) ListDepositsByTenant(ctx context.Context, arg ListDepositsByTenantParams) ([]ListDepositsByTenantRow, error) {
@@ -524,6 +568,7 @@ func (q *Queries) ListDepositsByTenant(ctx context.Context, arg ListDepositsByTe
 			&i.NasabahName,
 			&i.NasabahUsername,
 			&i.RecordedByName,
+			&i.TotalEstimatedCo2eAvoidedGrams,
 		); err != nil {
 			return nil, err
 		}

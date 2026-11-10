@@ -24,6 +24,23 @@ type BankSampah struct {
 	UpdatedAt     pgtype.Timestamptz
 }
 
+type CarbonLedger struct {
+	ID               pgtype.UUID
+	BankSampahID     pgtype.UUID
+	NasabahID        pgtype.UUID
+	DepositID        pgtype.UUID
+	DepositLineID    pgtype.UUID
+	EmissionFactorID pgtype.UUID
+	FactorVersion    string
+	FactorSource     string
+	WeightGrams      int64
+	Co2eGrams        int64
+	EntryType        string
+	ReversalForID    pgtype.UUID
+	Notes            pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+}
+
 type Deposit struct {
 	ID               pgtype.UUID
 	BankSampahID     pgtype.UUID
@@ -47,6 +64,19 @@ type DepositLine struct {
 	CreatedAt      pgtype.Timestamptz
 }
 
+type EmissionFactor struct {
+	ID            pgtype.UUID
+	MaterialCode  string
+	Name          string
+	Category      string
+	FactorVersion string
+	FactorSource  string
+	Co2eFactorPpm int64
+	Description   pgtype.Text
+	IsActive      bool
+	CreatedAt     pgtype.Timestamptz
+}
+
 type MaterialPrice struct {
 	ID             pgtype.UUID
 	MaterialTypeID pgtype.UUID
@@ -59,15 +89,16 @@ type MaterialPrice struct {
 }
 
 type MaterialType struct {
-	ID           pgtype.UUID
-	BankSampahID pgtype.UUID
-	Name         string
-	Category     string
-	Unit         string
-	Description  pgtype.Text
-	IsActive     bool
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID               pgtype.UUID
+	BankSampahID     pgtype.UUID
+	Name             string
+	Category         string
+	Unit             string
+	Description      pgtype.Text
+	IsActive         bool
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	EmissionFactorID pgtype.UUID
 }
 
 type NasabahProfile struct {

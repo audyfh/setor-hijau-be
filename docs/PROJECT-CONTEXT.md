@@ -83,12 +83,24 @@ _Update this section whenever work is handed off._
     - Derived balance calculation engine (`GET /api/v1/nasabah/me/balance` and `GET /api/v1/nasabah/:id/balance`) strictly derived from `SUM(total_amount_idr)`.
     - Deposit history listings (`GET /api/v1/deposits`) with tenant isolation and nasabah self-scoping.
   - Unit and integration tests verifying idempotency deduplication, price snapshotting over time, offline batch sync, struk digital generation, derived balance consistency, and multi-tenant isolation.
-- Next: M4 (Carbon Ledger), see `docs/plans/ROADMAP.md`.
+- Milestone M4 (carbon ledger) is completed:
+  - Scientific basis and methodology document in `docs/CARBON-METHOD.md` (EPA WARM v16 mapping for 7 material categories, conversion from short ton to metric ton, integer parts-per-million representation, half-up integer rounding, and 14 hand-verified test cases).
+  - ADR 0008 (`docs/decisions/0008-carbon-ledger-and-emission-factors.md`) and updated `docs/DATA-MODEL.md`.
+  - Database migration `000005_m4_carbon_ledger` for `emission_factors` (versioned, platform-wide), `material_types.emission_factor_id`, and `carbon_ledger` (append-only, tenant-scoped, check constraints preventing modifications).
+  - Carbon module (`internal/carbon`):
+    - Parts-per-million integer calculation: `(weight_grams * co2e_factor_ppm + 500_000) / 1_000_000`.
+    - Endpoints for emission factors listing (`GET /api/v1/carbon/factors`), tenant carbon ledger history (`GET /api/v1/carbon/ledger`), nasabah emission savings (`GET /api/v1/carbon/me/savings` & `GET /api/v1/carbon/nasabah/:id/savings`), and manual reversing entries (`POST /api/v1/carbon/reversals`).
+  - Atomic integration with deposits (`internal/deposit`):
+    - Automatic `carbon_ledger` entries created atomically within the same transaction for each deposit line linked to an emission factor.
+    - Struk digital (`GET /api/v1/deposits/:id/receipt`) enriched with estimated CO2e breakdown per line and total avoided CO2e.
+    - Idempotent replay preserves atomic single-ledger integrity.
+  - Tests passing: 14 hand-verified unit calculation tests in `internal/carbon/service_test.go` and comprehensive integration test suite in `test/integration/carbon_test.go` covering workflow, receipts, idempotency, reversals, and strict multi-tenant isolation.
+- Next: M5 (Cashbook & Monthly Closure), see `docs/plans/ROADMAP.md`.
 
 ## Open questions
 - Where CO2.js runs (frontend most likely) and how the API receives digital-footprint measurements: decide in M6.
 - Monorepo vs separate repos for BE and FE.
-- Exact WARM material list and mapping to Indonesian waste categories: `CARBON-METHOD.md`.
+- Exact WARM material list and mapping to Indonesian waste categories: resolved in `docs/CARBON-METHOD.md`.
 
 ## Where to look
 | Need | File |

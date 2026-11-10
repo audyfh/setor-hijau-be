@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/audyfh/setor-hijau-be/internal/auth"
+	"github.com/audyfh/setor-hijau-be/internal/carbon"
 	"github.com/audyfh/setor-hijau-be/internal/deposit"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
@@ -27,6 +28,7 @@ type Options struct {
 	NasabahHandler  *nasabah.Handler
 	MaterialHandler *material.Handler
 	DepositHandler  *deposit.Handler
+	CarbonHandler   *carbon.Handler
 	AuthMid         gin.HandlerFunc
 	RateLimiter     *middleware.RateLimiter
 }
@@ -104,6 +106,9 @@ func New(opts Options) *gin.Engine {
 		}
 		if opts.DepositHandler != nil {
 			opts.DepositHandler.RegisterRoutes(v1, opts.AuthMid)
+		}
+		if opts.CarbonHandler != nil {
+			opts.CarbonHandler.RegisterRoutes(v1, opts.AuthMid)
 		}
 	}
 

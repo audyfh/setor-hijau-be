@@ -75,28 +75,32 @@ func (q *Queries) CreateMaterialPrice(ctx context.Context, arg CreateMaterialPri
 }
 
 const createMaterialType = `-- name: CreateMaterialType :one
+
 INSERT INTO material_types (
     bank_sampah_id,
     name,
     category,
     unit,
     description,
+    emission_factor_id,
     is_active
 ) VALUES (
-    $1, $2, $3, $4, $5, $6
+    $1, $2, $3, $4, $5, $6, $7
 )
-RETURNING id, bank_sampah_id, name, category, unit, description, is_active, created_at, updated_at
+RETURNING id, bank_sampah_id, name, category, unit, description, is_active, created_at, updated_at, emission_factor_id
 `
 
 type CreateMaterialTypeParams struct {
-	BankSampahID pgtype.UUID
-	Name         string
-	Category     string
-	Unit         string
-	Description  pgtype.Text
-	IsActive     bool
+	BankSampahID     pgtype.UUID
+	Name             string
+	Category         string
+	Unit             string
+	Description      pgtype.Text
+	EmissionFactorID pgtype.UUID
+	IsActive         bool
 }
 
+// db/queries/materials.sql
 func (q *Queries) CreateMaterialType(ctx context.Context, arg CreateMaterialTypeParams) (MaterialType, error) {
 	row := q.db.QueryRow(ctx, createMaterialType,
 		arg.BankSampahID,
@@ -104,6 +108,7 @@ func (q *Queries) CreateMaterialType(ctx context.Context, arg CreateMaterialType
 		arg.Category,
 		arg.Unit,
 		arg.Description,
+		arg.EmissionFactorID,
 		arg.IsActive,
 	)
 	var i MaterialType
@@ -117,6 +122,7 @@ func (q *Queries) CreateMaterialType(ctx context.Context, arg CreateMaterialType
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EmissionFactorID,
 	)
 	return i, err
 }
@@ -156,14 +162,21 @@ SELECT
     m.category,
     m.unit,
     m.description,
+    m.emission_factor_id,
     m.is_active,
     m.created_at,
     m.updated_at,
     COALESCE(p.id, '00000000-0000-0000-0000-000000000000'::uuid) as price_id,
     COALESCE(p.price_per_kg_idr, 0) as price_per_kg_idr,
-    p.effective_from as price_effective_from
+    p.effective_from as price_effective_from,
+    ef.material_code as factor_material_code,
+    ef.name as factor_name,
+    ef.factor_version,
+    ef.factor_source,
+    ef.co2e_factor_ppm
 FROM material_types m
 LEFT JOIN material_prices p ON m.id = p.material_type_id AND p.effective_to IS NULL
+LEFT JOIN emission_factors ef ON m.emission_factor_id = ef.id
 WHERE m.id = $1 AND m.bank_sampah_id = $2
 LIMIT 1
 `
@@ -180,12 +193,18 @@ type GetMaterialTypeByIDRow struct {
 	Category           string
 	Unit               string
 	Description        pgtype.Text
+	EmissionFactorID   pgtype.UUID
 	IsActive           bool
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
 	PriceID            pgtype.UUID
 	PricePerKgIdr      int64
 	PriceEffectiveFrom pgtype.Timestamptz
+	FactorMaterialCode pgtype.Text
+	FactorName         pgtype.Text
+	FactorVersion      pgtype.Text
+	FactorSource       pgtype.Text
+	Co2eFactorPpm      pgtype.Int8
 }
 
 func (q *Queries) GetMaterialTypeByID(ctx context.Context, arg GetMaterialTypeByIDParams) (GetMaterialTypeByIDRow, error) {
@@ -198,12 +217,18 @@ func (q *Queries) GetMaterialTypeByID(ctx context.Context, arg GetMaterialTypeBy
 		&i.Category,
 		&i.Unit,
 		&i.Description,
+		&i.EmissionFactorID,
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PriceID,
 		&i.PricePerKgIdr,
 		&i.PriceEffectiveFrom,
+		&i.FactorMaterialCode,
+		&i.FactorName,
+		&i.FactorVersion,
+		&i.FactorSource,
+		&i.Co2eFactorPpm,
 	)
 	return i, err
 }
@@ -256,14 +281,21 @@ SELECT
     m.category,
     m.unit,
     m.description,
+    m.emission_factor_id,
     m.is_active,
     m.created_at,
     m.updated_at,
     COALESCE(p.id, '00000000-0000-0000-0000-000000000000'::uuid) as price_id,
     COALESCE(p.price_per_kg_idr, 0) as price_per_kg_idr,
-    p.effective_from as price_effective_from
+    p.effective_from as price_effective_from,
+    ef.material_code as factor_material_code,
+    ef.name as factor_name,
+    ef.factor_version,
+    ef.factor_source,
+    ef.co2e_factor_ppm
 FROM material_types m
 LEFT JOIN material_prices p ON m.id = p.material_type_id AND p.effective_to IS NULL
+LEFT JOIN emission_factors ef ON m.emission_factor_id = ef.id
 WHERE m.bank_sampah_id = $1
   AND ($2::boolean IS FALSE OR m.is_active = TRUE)
 ORDER BY m.name ASC
@@ -281,12 +313,18 @@ type ListMaterialTypesRow struct {
 	Category           string
 	Unit               string
 	Description        pgtype.Text
+	EmissionFactorID   pgtype.UUID
 	IsActive           bool
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
 	PriceID            pgtype.UUID
 	PricePerKgIdr      int64
 	PriceEffectiveFrom pgtype.Timestamptz
+	FactorMaterialCode pgtype.Text
+	FactorName         pgtype.Text
+	FactorVersion      pgtype.Text
+	FactorSource       pgtype.Text
+	Co2eFactorPpm      pgtype.Int8
 }
 
 func (q *Queries) ListMaterialTypes(ctx context.Context, arg ListMaterialTypesParams) ([]ListMaterialTypesRow, error) {
@@ -305,12 +343,18 @@ func (q *Queries) ListMaterialTypes(ctx context.Context, arg ListMaterialTypesPa
 			&i.Category,
 			&i.Unit,
 			&i.Description,
+			&i.EmissionFactorID,
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.PriceID,
 			&i.PricePerKgIdr,
 			&i.PriceEffectiveFrom,
+			&i.FactorMaterialCode,
+			&i.FactorName,
+			&i.FactorVersion,
+			&i.FactorSource,
+			&i.Co2eFactorPpm,
 		); err != nil {
 			return nil, err
 		}
@@ -328,20 +372,22 @@ SET name = $1,
     category = $2,
     unit = $3,
     description = $4,
-    is_active = $5,
+    emission_factor_id = $5,
+    is_active = $6,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = $6 AND bank_sampah_id = $7
-RETURNING id, bank_sampah_id, name, category, unit, description, is_active, created_at, updated_at
+WHERE id = $7 AND bank_sampah_id = $8
+RETURNING id, bank_sampah_id, name, category, unit, description, is_active, created_at, updated_at, emission_factor_id
 `
 
 type UpdateMaterialTypeParams struct {
-	Name         string
-	Category     string
-	Unit         string
-	Description  pgtype.Text
-	IsActive     bool
-	ID           pgtype.UUID
-	BankSampahID pgtype.UUID
+	Name             string
+	Category         string
+	Unit             string
+	Description      pgtype.Text
+	EmissionFactorID pgtype.UUID
+	IsActive         bool
+	ID               pgtype.UUID
+	BankSampahID     pgtype.UUID
 }
 
 func (q *Queries) UpdateMaterialType(ctx context.Context, arg UpdateMaterialTypeParams) (MaterialType, error) {
@@ -350,6 +396,7 @@ func (q *Queries) UpdateMaterialType(ctx context.Context, arg UpdateMaterialType
 		arg.Category,
 		arg.Unit,
 		arg.Description,
+		arg.EmissionFactorID,
 		arg.IsActive,
 		arg.ID,
 		arg.BankSampahID,
@@ -365,6 +412,7 @@ func (q *Queries) UpdateMaterialType(ctx context.Context, arg UpdateMaterialType
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EmissionFactorID,
 	)
 	return i, err
 }

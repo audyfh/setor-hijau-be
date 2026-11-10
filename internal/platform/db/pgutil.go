@@ -20,6 +20,18 @@ func FromPGUUID(u pgtype.UUID) uuid.UUID {
 	return uuid.UUID(u.Bytes)
 }
 
+// FromPGUUIDPtr converts a pgtype.UUID to *uuid.UUID (nil if !u.Valid or uuid.Nil).
+func FromPGUUIDPtr(u pgtype.UUID) *uuid.UUID {
+	if !u.Valid {
+		return nil
+	}
+	id := uuid.UUID(u.Bytes)
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
+}
+
 // ToPGText converts a string to pgtype.Text (valid if non-empty).
 func ToPGText(s string) pgtype.Text {
 	return pgtype.Text{String: s, Valid: s != ""}

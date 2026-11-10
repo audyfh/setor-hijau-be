@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/audyfh/setor-hijau-be/internal/carbon"
 	"github.com/audyfh/setor-hijau-be/internal/platform/db"
 	"github.com/audyfh/setor-hijau-be/internal/platform/db/sqlc"
 	"github.com/google/uuid"
@@ -31,13 +32,17 @@ func NewService(repo Repository) Service {
 }
 
 type lineCalculation struct {
-	MaterialTypeID   uuid.UUID
-	MaterialName     string
-	MaterialCategory string
-	MaterialUnit     string
-	WeightGrams      int64
-	PricePerKgIDR    int64
-	SubtotalIDR      int64
+	MaterialTypeID            uuid.UUID
+	MaterialName              string
+	MaterialCategory          string
+	MaterialUnit              string
+	WeightGrams               int64
+	PricePerKgIDR             int64
+	SubtotalIDR               int64
+	EmissionFactorID          *uuid.UUID
+	FactorVersion             string
+	FactorSource              string
+	EstimatedCO2eAvoidedGrams int64
 }
 
 func (s *service) RecordDeposit(ctx context.Context, bankSampahID, recordedBy uuid.UUID, req CreateDepositRequest) (*DepositResponse, bool, error) {
@@ -75,10 +80,11 @@ func (s *service) RecordDeposit(ctx context.Context, bankSampahID, recordedBy uu
 		return nil, false, err
 	}
 
-	// 3. Resolve prices at client_recorded_at and calculate line subtotals
+	// 3. Resolve prices at client_recorded_at and calculate line subtotals & avoided emissions
 	var calculatedLines []lineCalculation
 	var totalWeight int64
 	var totalAmount int64
+	var totalAvoidedCO2e int64
 
 	for _, lineReq := range req.Lines {
 		priceRow, err := s.repo.GetMaterialPriceAtTime(ctx, bankSampahID, lineReq.MaterialTypeID, req.ClientRecordedAt)
@@ -95,18 +101,34 @@ func (s *service) RecordDeposit(ctx context.Context, bankSampahID, recordedBy uu
 		pricePerKg := priceRow.PricePerKgIdr.Int64
 		subtotal := CalculateSubtotal(lineReq.WeightGrams, pricePerKg)
 
+		var factorID *uuid.UUID
+		var factorVersion, factorSource string
+		var avoidedCO2e int64
+		if priceRow.EmissionFactorID.Valid && priceRow.Co2eFactorPpm.Valid && priceRow.Co2eFactorPpm.Int64 > 0 {
+			fid := db.FromPGUUID(priceRow.EmissionFactorID)
+			factorID = &fid
+			factorVersion = db.FromPGText(priceRow.FactorVersion)
+			factorSource = db.FromPGText(priceRow.FactorSource)
+			avoidedCO2e = carbon.CalculateAvoidedCO2e(lineReq.WeightGrams, priceRow.Co2eFactorPpm.Int64)
+		}
+
 		calculatedLines = append(calculatedLines, lineCalculation{
-			MaterialTypeID:   lineReq.MaterialTypeID,
-			MaterialName:     priceRow.MaterialName,
-			MaterialCategory: priceRow.MaterialCategory,
-			MaterialUnit:     priceRow.MaterialUnit,
-			WeightGrams:      lineReq.WeightGrams,
-			PricePerKgIDR:    pricePerKg,
-			SubtotalIDR:      subtotal,
+			MaterialTypeID:            lineReq.MaterialTypeID,
+			MaterialName:              priceRow.MaterialName,
+			MaterialCategory:          priceRow.MaterialCategory,
+			MaterialUnit:              priceRow.MaterialUnit,
+			WeightGrams:               lineReq.WeightGrams,
+			PricePerKgIDR:             pricePerKg,
+			SubtotalIDR:               subtotal,
+			EmissionFactorID:          factorID,
+			FactorVersion:             factorVersion,
+			FactorSource:              factorSource,
+			EstimatedCO2eAvoidedGrams: avoidedCO2e,
 		})
 
 		totalWeight += lineReq.WeightGrams
 		totalAmount += subtotal
+		totalAvoidedCO2e += avoidedCO2e
 	}
 
 	// 4. Persist in database transaction
@@ -146,6 +168,28 @@ func (s *service) RecordDeposit(ctx context.Context, bankSampahID, recordedBy uu
 				return err
 			}
 			createdLineRows = append(createdLineRows, *lineRow)
+
+			// Hard Rule #2 & Invariant #5: Record to carbon ledger atomically if material has emission factor
+			if cl.EmissionFactorID != nil && *cl.EmissionFactorID != uuid.Nil {
+				_, err = q.CreateCarbonLedgerEntry(ctx, sqlc.CreateCarbonLedgerEntryParams{
+					BankSampahID:     db.ToPGUUID(bankSampahID),
+					NasabahID:        db.ToPGUUID(req.NasabahID),
+					DepositID:        depositRow.ID,
+					DepositLineID:    lineRow.ID,
+					EmissionFactorID: db.ToPGUUID(*cl.EmissionFactorID),
+					FactorVersion:    cl.FactorVersion,
+					FactorSource:     cl.FactorSource,
+					WeightGrams:      cl.WeightGrams,
+					Co2eGrams:        cl.EstimatedCO2eAvoidedGrams,
+					EntryType:        "deposit",
+					ReversalForID:    pgtype.UUID{}, // NULL
+					Notes:            pgtype.Text{}, // NULL
+					CreatedAt:        db.ToPGTimestamptz(req.ClientRecordedAt),
+				})
+				if err != nil {
+					return fmt.Errorf("failed to create carbon ledger entry: %w", err)
+				}
+			}
 		}
 		return nil
 	})
@@ -163,33 +207,38 @@ func (s *service) RecordDeposit(ctx context.Context, bankSampahID, recordedBy uu
 			createdAt = db.FromPGTimestamptz(createdLineRows[i].CreatedAt)
 		}
 		lineResponses = append(lineResponses, DepositLineResponse{
-			ID:               lineID,
-			DepositID:        db.FromPGUUID(createdDeposit.ID),
-			MaterialTypeID:   cl.MaterialTypeID,
-			MaterialName:     cl.MaterialName,
-			MaterialCategory: cl.MaterialCategory,
-			MaterialUnit:     cl.MaterialUnit,
-			WeightGrams:      cl.WeightGrams,
-			PricePerKgIDR:    cl.PricePerKgIDR,
-			SubtotalIDR:      cl.SubtotalIDR,
-			CreatedAt:        createdAt,
+			ID:                        lineID,
+			DepositID:                 db.FromPGUUID(createdDeposit.ID),
+			MaterialTypeID:            cl.MaterialTypeID,
+			MaterialName:              cl.MaterialName,
+			MaterialCategory:          cl.MaterialCategory,
+			MaterialUnit:              cl.MaterialUnit,
+			WeightGrams:               cl.WeightGrams,
+			PricePerKgIDR:             cl.PricePerKgIDR,
+			SubtotalIDR:               cl.SubtotalIDR,
+			EstimatedCO2eAvoidedGrams: cl.EstimatedCO2eAvoidedGrams,
+			FactorVersion:             cl.FactorVersion,
+			FactorSource:              cl.FactorSource,
+			CreatedAt:                 createdAt,
 		})
 	}
 
 	return &DepositResponse{
-		ID:               db.FromPGUUID(createdDeposit.ID),
-		BankSampahID:     bankSampahID,
-		NasabahID:        req.NasabahID,
-		NasabahName:      nasabah.FullName,
-		NasabahUsername:  nasabah.Username,
-		IdempotencyKey:   req.IdempotencyKey,
-		TotalWeightGrams: totalWeight,
-		TotalAmountIDR:   totalAmount,
-		Notes:            req.Notes,
-		RecordedBy:       recordedBy,
-		ClientRecordedAt: req.ClientRecordedAt,
-		CreatedAt:        db.FromPGTimestamptz(createdDeposit.CreatedAt),
-		Lines:            lineResponses,
+		ID:                             db.FromPGUUID(createdDeposit.ID),
+		BankSampahID:                   bankSampahID,
+		NasabahID:                      req.NasabahID,
+		NasabahName:                    nasabah.FullName,
+		NasabahUsername:                nasabah.Username,
+		IdempotencyKey:                 req.IdempotencyKey,
+		TotalWeightGrams:               totalWeight,
+		TotalAmountIDR:                 totalAmount,
+		TotalEstimatedCO2eAvoidedGrams: totalAvoidedCO2e,
+		Notes:                          req.Notes,
+		RecordedBy:                     recordedBy,
+		RecordedByName:                 "",
+		ClientRecordedAt:               req.ClientRecordedAt,
+		CreatedAt:                      db.FromPGTimestamptz(createdDeposit.CreatedAt),
+		Lines:                          lineResponses,
 	}, false, nil
 }
 
@@ -246,16 +295,19 @@ func (s *service) GetDeposit(ctx context.Context, bankSampahID, depositID, reque
 	var lineResponses []DepositLineResponse
 	for _, l := range lines {
 		lineResponses = append(lineResponses, DepositLineResponse{
-			ID:               db.FromPGUUID(l.ID),
-			DepositID:        db.FromPGUUID(l.DepositID),
-			MaterialTypeID:   db.FromPGUUID(l.MaterialTypeID),
-			MaterialName:     l.MaterialName,
-			MaterialCategory: l.MaterialCategory,
-			MaterialUnit:     l.MaterialUnit,
-			WeightGrams:      l.WeightGrams,
-			PricePerKgIDR:    l.PricePerKgIdr,
-			SubtotalIDR:      l.SubtotalIdr,
-			CreatedAt:        db.FromPGTimestamptz(l.CreatedAt),
+			ID:                        db.FromPGUUID(l.ID),
+			DepositID:                 db.FromPGUUID(l.DepositID),
+			MaterialTypeID:            db.FromPGUUID(l.MaterialTypeID),
+			MaterialName:              l.MaterialName,
+			MaterialCategory:          l.MaterialCategory,
+			MaterialUnit:              l.MaterialUnit,
+			WeightGrams:               l.WeightGrams,
+			PricePerKgIDR:             l.PricePerKgIdr,
+			SubtotalIDR:               l.SubtotalIdr,
+			EstimatedCO2eAvoidedGrams: l.EstimatedCo2eAvoidedGrams,
+			FactorVersion:             l.FactorVersion,
+			FactorSource:              l.FactorSource,
+			CreatedAt:                 db.FromPGTimestamptz(l.CreatedAt),
 		})
 	}
 
@@ -265,20 +317,21 @@ func (s *service) GetDeposit(ctx context.Context, bankSampahID, depositID, reque
 	}
 
 	return &DepositResponse{
-		ID:               db.FromPGUUID(row.ID),
-		BankSampahID:     bankSampahID,
-		NasabahID:        nasabahID,
-		NasabahName:      row.NasabahName,
-		NasabahUsername:  row.NasabahUsername,
-		IdempotencyKey:   row.IdempotencyKey,
-		TotalWeightGrams: row.TotalWeightGrams,
-		TotalAmountIDR:   row.TotalAmountIdr,
-		Notes:            notesPtr,
-		RecordedBy:       db.FromPGUUID(row.RecordedBy),
-		RecordedByName:   row.RecordedByName,
-		ClientRecordedAt: db.FromPGTimestamptz(row.ClientRecordedAt),
-		CreatedAt:        db.FromPGTimestamptz(row.CreatedAt),
-		Lines:            lineResponses,
+		ID:                             db.FromPGUUID(row.ID),
+		BankSampahID:                   bankSampahID,
+		NasabahID:                      nasabahID,
+		NasabahName:                    row.NasabahName,
+		NasabahUsername:                row.NasabahUsername,
+		IdempotencyKey:                 row.IdempotencyKey,
+		TotalWeightGrams:               row.TotalWeightGrams,
+		TotalAmountIDR:                 row.TotalAmountIdr,
+		TotalEstimatedCO2eAvoidedGrams: row.TotalEstimatedCo2eAvoidedGrams,
+		Notes:                          notesPtr,
+		RecordedBy:                     db.FromPGUUID(row.RecordedBy),
+		RecordedByName:                 row.RecordedByName,
+		ClientRecordedAt:               db.FromPGTimestamptz(row.ClientRecordedAt),
+		CreatedAt:                      db.FromPGTimestamptz(row.CreatedAt),
+		Lines:                          lineResponses,
 	}, nil
 }
 
@@ -301,16 +354,19 @@ func (s *service) GetReceipt(ctx context.Context, bankSampahID, depositID, reque
 	var lineResponses []DepositLineResponse
 	for _, l := range lines {
 		lineResponses = append(lineResponses, DepositLineResponse{
-			ID:               db.FromPGUUID(l.ID),
-			DepositID:        db.FromPGUUID(l.DepositID),
-			MaterialTypeID:   db.FromPGUUID(l.MaterialTypeID),
-			MaterialName:     l.MaterialName,
-			MaterialCategory: l.MaterialCategory,
-			MaterialUnit:     l.MaterialUnit,
-			WeightGrams:      l.WeightGrams,
-			PricePerKgIDR:    l.PricePerKgIdr,
-			SubtotalIDR:      l.SubtotalIdr,
-			CreatedAt:        db.FromPGTimestamptz(l.CreatedAt),
+			ID:                        db.FromPGUUID(l.ID),
+			DepositID:                 db.FromPGUUID(l.DepositID),
+			MaterialTypeID:            db.FromPGUUID(l.MaterialTypeID),
+			MaterialName:              l.MaterialName,
+			MaterialCategory:          l.MaterialCategory,
+			MaterialUnit:              l.MaterialUnit,
+			WeightGrams:               l.WeightGrams,
+			PricePerKgIDR:             l.PricePerKgIdr,
+			SubtotalIDR:               l.SubtotalIdr,
+			EstimatedCO2eAvoidedGrams: l.EstimatedCo2eAvoidedGrams,
+			FactorVersion:             l.FactorVersion,
+			FactorSource:              l.FactorSource,
+			CreatedAt:                 db.FromPGTimestamptz(l.CreatedAt),
 		})
 	}
 
@@ -352,33 +408,34 @@ func (s *service) GetReceipt(ctx context.Context, bankSampahID, depositID, reque
 	)
 
 	return &DigitalReceiptResponse{
-		DepositID:               depositID,
-		ReceiptNumber:           receiptNumber,
-		BankSampahID:            bankSampahID,
-		BankSampahName:          row.BankSampahName,
-		BankSampahCode:          row.BankSampahCode,
-		BankSampahAddress:       row.BankSampahAddress,
-		BankSampahRW:            row.BankSampahRw,
-		BankSampahRT:            bsRtPtr,
-		BankSampahKelurahan:     row.BankSampahKelurahan,
-		BankSampahKecamatan:     row.BankSampahKecamatan,
-		BankSampahKabupatenKota: row.BankSampahKabupatenKota,
-		BankSampahContactPhone:  bsPhonePtr,
-		NasabahID:               nasabahID,
-		NasabahName:             row.NasabahName,
-		NasabahUsername:         row.NasabahUsername,
-		NasabahRW:               row.NasabahRw,
-		NasabahRT:               nasabahRtPtr,
-		NasabahPhone:            nasabahPhonePtr,
-		RecordedByID:            db.FromPGUUID(row.RecordedByID),
-		RecordedByName:          row.RecordedByName,
-		TotalWeightGrams:        row.TotalWeightGrams,
-		TotalAmountIDR:          row.TotalAmountIdr,
-		NasabahCurrentBalance:   balanceRow.CurrentBalanceIdr,
-		Notes:                   notesPtr,
-		ClientRecordedAt:        clientTime,
-		CreatedAt:               db.FromPGTimestamptz(row.CreatedAt),
-		Lines:                   lineResponses,
+		DepositID:                      depositID,
+		ReceiptNumber:                  receiptNumber,
+		BankSampahID:                   bankSampahID,
+		BankSampahName:                 row.BankSampahName,
+		BankSampahCode:                 row.BankSampahCode,
+		BankSampahAddress:              row.BankSampahAddress,
+		BankSampahRW:                   row.BankSampahRw,
+		BankSampahRT:                   bsRtPtr,
+		BankSampahKelurahan:            row.BankSampahKelurahan,
+		BankSampahKecamatan:            row.BankSampahKecamatan,
+		BankSampahKabupatenKota:        row.BankSampahKabupatenKota,
+		BankSampahContactPhone:         bsPhonePtr,
+		NasabahID:                      nasabahID,
+		NasabahName:                    row.NasabahName,
+		NasabahUsername:                row.NasabahUsername,
+		NasabahRW:                      row.NasabahRw,
+		NasabahRT:                      nasabahRtPtr,
+		NasabahPhone:                   nasabahPhonePtr,
+		RecordedByID:                   db.FromPGUUID(row.RecordedByID),
+		RecordedByName:                 row.RecordedByName,
+		TotalWeightGrams:               row.TotalWeightGrams,
+		TotalAmountIDR:                 row.TotalAmountIdr,
+		TotalEstimatedCO2eAvoidedGrams: row.TotalEstimatedCo2eAvoidedGrams,
+		NasabahCurrentBalance:          balanceRow.CurrentBalanceIdr,
+		Notes:                          notesPtr,
+		ClientRecordedAt:               clientTime,
+		CreatedAt:                      db.FromPGTimestamptz(row.CreatedAt),
+		Lines:                          lineResponses,
 	}, nil
 }
 
@@ -444,20 +501,21 @@ func (s *service) ListDeposits(ctx context.Context, bankSampahID, requesterUserI
 			notesPtr = &r.Notes.String
 		}
 		data = append(data, DepositResponse{
-			ID:               db.FromPGUUID(r.ID),
-			BankSampahID:     bankSampahID,
-			NasabahID:        db.FromPGUUID(r.NasabahID),
-			NasabahName:      r.NasabahName,
-			NasabahUsername:  r.NasabahUsername,
-			IdempotencyKey:   r.IdempotencyKey,
-			TotalWeightGrams: r.TotalWeightGrams,
-			TotalAmountIDR:   r.TotalAmountIdr,
-			Notes:            notesPtr,
-			RecordedBy:       db.FromPGUUID(r.RecordedBy),
-			RecordedByName:   r.RecordedByName,
-			ClientRecordedAt: db.FromPGTimestamptz(r.ClientRecordedAt),
-			CreatedAt:        db.FromPGTimestamptz(r.CreatedAt),
-			Lines:            nil, // Lines omitted in list view for Green Software performance
+			ID:                             db.FromPGUUID(r.ID),
+			BankSampahID:                   bankSampahID,
+			NasabahID:                      db.FromPGUUID(r.NasabahID),
+			NasabahName:                    r.NasabahName,
+			NasabahUsername:                r.NasabahUsername,
+			IdempotencyKey:                 r.IdempotencyKey,
+			TotalWeightGrams:               r.TotalWeightGrams,
+			TotalAmountIDR:                 r.TotalAmountIdr,
+			TotalEstimatedCO2eAvoidedGrams: r.TotalEstimatedCo2eAvoidedGrams,
+			Notes:                          notesPtr,
+			RecordedBy:                     db.FromPGUUID(r.RecordedBy),
+			RecordedByName:                 r.RecordedByName,
+			ClientRecordedAt:               db.FromPGTimestamptz(r.ClientRecordedAt),
+			CreatedAt:                      db.FromPGTimestamptz(r.CreatedAt),
+			Lines:                          nil, // Lines omitted in list view for Green Software performance
 		})
 	}
 
@@ -486,10 +544,10 @@ func (s *service) GetNasabahBalance(ctx context.Context, bankSampahID, nasabahID
 		return nil, err
 	}
 
-	var lastDepositAt *time.Time
+	var lastDepositTime *time.Time
 	if row.LastDepositAt.Valid {
-		t := row.LastDepositAt.Time
-		lastDepositAt = &t
+		t := db.FromPGTimestamptz(row.LastDepositAt)
+		lastDepositTime = &t
 	}
 
 	return &NasabahBalanceResponse{
@@ -497,6 +555,6 @@ func (s *service) GetNasabahBalance(ctx context.Context, bankSampahID, nasabahID
 		CurrentBalanceIDR:  row.CurrentBalanceIdr,
 		TotalWeightGrams:   row.TotalWeightGrams,
 		TotalDepositsCount: row.TotalDepositsCount,
-		LastDepositAt:      lastDepositAt,
+		LastDepositAt:      lastDepositTime,
 	}, nil
 }

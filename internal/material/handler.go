@@ -36,6 +36,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup, authMid gin.HandlerFunc) {
 			pengelolaOnly.POST("", h.CreateMaterial)
 			pengelolaOnly.PUT("/:id", h.UpdateMaterial)
 			pengelolaOnly.POST("/:id/prices", h.UpdatePrice)
+			pengelolaOnly.PUT("/:id/price", h.UpdatePrice)
 			pengelolaOnly.GET("/:id/prices", h.GetPriceHistory)
 		}
 	}

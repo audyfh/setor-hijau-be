@@ -35,7 +35,8 @@ RETURNING *;
 SELECT d.*, 
        u_nasabah.full_name AS nasabah_name,
        u_nasabah.username AS nasabah_username,
-       u_recorded.full_name AS recorded_by_name
+       u_recorded.full_name AS recorded_by_name,
+       COALESCE((SELECT SUM(co2e_grams) FROM carbon_ledger WHERE deposit_id = d.id), 0)::bigint AS total_estimated_co2e_avoided_grams
 FROM deposits d
 JOIN users u_nasabah ON d.nasabah_id = u_nasabah.id
 JOIN users u_recorded ON d.recorded_by = u_recorded.id
@@ -51,6 +52,7 @@ SELECT d.id AS deposit_id,
        d.notes,
        d.client_recorded_at,
        d.created_at,
+       COALESCE((SELECT SUM(co2e_grams) FROM carbon_ledger WHERE deposit_id = d.id), 0)::bigint AS total_estimated_co2e_avoided_grams,
        bs.name AS bank_sampah_name,
        bs.code AS bank_sampah_code,
        bs.address AS bank_sampah_address,
@@ -78,9 +80,13 @@ WHERE d.id = $1 AND d.bank_sampah_id = $2;
 SELECT dl.*,
        mt.name AS material_name,
        mt.category AS material_category,
-       mt.unit AS material_unit
+       mt.unit AS material_unit,
+       COALESCE(cl.co2e_grams, 0)::bigint AS estimated_co2e_avoided_grams,
+       COALESCE(cl.factor_version, '')::varchar AS factor_version,
+       COALESCE(cl.factor_source, '')::text AS factor_source
 FROM deposit_lines dl
 JOIN material_types mt ON dl.material_type_id = mt.id
+LEFT JOIN carbon_ledger cl ON dl.id = cl.deposit_line_id
 WHERE dl.deposit_id = $1
 ORDER BY dl.created_at ASC;
 
@@ -88,7 +94,8 @@ ORDER BY dl.created_at ASC;
 SELECT d.*,
        u_nasabah.full_name AS nasabah_name,
        u_nasabah.username AS nasabah_username,
-       u_recorded.full_name AS recorded_by_name
+       u_recorded.full_name AS recorded_by_name,
+       COALESCE((SELECT SUM(co2e_grams) FROM carbon_ledger WHERE deposit_id = d.id), 0)::bigint AS total_estimated_co2e_avoided_grams
 FROM deposits d
 JOIN users u_nasabah ON d.nasabah_id = u_nasabah.id
 JOIN users u_recorded ON d.recorded_by = u_recorded.id
@@ -122,12 +129,26 @@ SELECT mt.id AS material_id,
        mt.category AS material_category,
        mt.unit AS material_unit,
        mt.is_active AS material_is_active,
+       mt.emission_factor_id,
+       ef.material_code AS factor_material_code,
+       ef.name AS factor_name,
+       ef.factor_version,
+       ef.factor_source,
+       ef.co2e_factor_ppm,
        mp.price_per_kg_idr
 FROM material_types mt
 LEFT JOIN material_prices mp ON mt.id = mp.material_type_id
   AND mp.bank_sampah_id = $1
-  AND mp.effective_from <= $2
-  AND (mp.effective_to IS NULL OR mp.effective_to > $2)
+  AND mp.id = (
+      COALESCE(
+          (SELECT p1.id FROM material_prices p1 
+           WHERE p1.material_type_id = mt.id AND p1.bank_sampah_id = $1 AND p1.effective_from <= $2 AND (p1.effective_to IS NULL OR p1.effective_to > $2)
+           ORDER BY p1.effective_from DESC LIMIT 1),
+          (SELECT p2.id FROM material_prices p2 
+           WHERE p2.material_type_id = mt.id AND p2.bank_sampah_id = $1
+           ORDER BY p2.effective_from ASC LIMIT 1)
+      )
+  )
+LEFT JOIN emission_factors ef ON mt.emission_factor_id = ef.id
 WHERE mt.id = $3 AND mt.bank_sampah_id = $1
-ORDER BY mp.effective_from DESC
 LIMIT 1;

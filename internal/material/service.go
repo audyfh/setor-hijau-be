@@ -10,6 +10,7 @@ import (
 	"github.com/audyfh/setor-hijau-be/internal/platform/db"
 	"github.com/audyfh/setor-hijau-be/internal/platform/db/sqlc"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var (
@@ -48,17 +49,23 @@ func (s *service) CreateMaterial(ctx context.Context, pengelolaID, bankSampahID 
 		unit = "kg"
 	}
 
+	var emissionFactorUUID pgtype.UUID
+	if req.EmissionFactorID != nil && *req.EmissionFactorID != uuid.Nil {
+		emissionFactorUUID = db.ToPGUUID(*req.EmissionFactorID)
+	}
+
 	now := time.Now().UTC()
 	var createdMaterialID uuid.UUID
 
 	err := s.repo.ExecTx(ctx, func(q *sqlc.Queries) error {
 		m, err := s.repo.CreateMaterialType(ctx, q, sqlc.CreateMaterialTypeParams{
-			BankSampahID: db.ToPGUUID(bankSampahID),
-			Name:         strings.TrimSpace(req.Name),
-			Category:     strings.TrimSpace(req.Category),
-			Unit:         unit,
-			Description:  db.ToPGText(strings.TrimSpace(req.Description)),
-			IsActive:     true,
+			BankSampahID:     db.ToPGUUID(bankSampahID),
+			Name:             strings.TrimSpace(req.Name),
+			Category:         strings.TrimSpace(req.Category),
+			Unit:             unit,
+			Description:      db.ToPGText(strings.TrimSpace(req.Description)),
+			EmissionFactorID: emissionFactorUUID,
+			IsActive:         true,
 		})
 		if err != nil {
 			if strings.Contains(err.Error(), "uq_material_types_bank_sampah_name") {
@@ -109,14 +116,20 @@ func (s *service) UpdateMaterial(ctx context.Context, id, bankSampahID uuid.UUID
 		unit = "kg"
 	}
 
+	var emissionFactorUUID pgtype.UUID
+	if req.EmissionFactorID != nil && *req.EmissionFactorID != uuid.Nil {
+		emissionFactorUUID = db.ToPGUUID(*req.EmissionFactorID)
+	}
+
 	_, err = s.repo.UpdateMaterialType(ctx, nil, sqlc.UpdateMaterialTypeParams{
-		Name:         strings.TrimSpace(req.Name),
-		Category:     strings.TrimSpace(req.Category),
-		Unit:         unit,
-		Description:  db.ToPGText(strings.TrimSpace(req.Description)),
-		IsActive:     req.IsActive,
-		ID:           db.ToPGUUID(id),
-		BankSampahID: db.ToPGUUID(bankSampahID),
+		Name:             strings.TrimSpace(req.Name),
+		Category:         strings.TrimSpace(req.Category),
+		Unit:             unit,
+		Description:      db.ToPGText(strings.TrimSpace(req.Description)),
+		EmissionFactorID: emissionFactorUUID,
+		IsActive:         req.IsActive,
+		ID:               db.ToPGUUID(id),
+		BankSampahID:     db.ToPGUUID(bankSampahID),
 	})
 	if err != nil {
 		if strings.Contains(err.Error(), "uq_material_types_bank_sampah_name") {
