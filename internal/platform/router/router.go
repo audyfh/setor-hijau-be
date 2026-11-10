@@ -8,12 +8,14 @@ import (
 
 	"github.com/audyfh/setor-hijau-be/internal/auth"
 	"github.com/audyfh/setor-hijau-be/internal/carbon"
+	"github.com/audyfh/setor-hijau-be/internal/cashbook"
 	"github.com/audyfh/setor-hijau-be/internal/deposit"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
 	"github.com/audyfh/setor-hijau-be/internal/platform/db"
 	"github.com/audyfh/setor-hijau-be/internal/platform/middleware"
+	"github.com/audyfh/setor-hijau-be/internal/report"
 	"github.com/audyfh/setor-hijau-be/internal/tenant"
 	"github.com/gin-gonic/gin"
 )
@@ -29,6 +31,8 @@ type Options struct {
 	MaterialHandler *material.Handler
 	DepositHandler  *deposit.Handler
 	CarbonHandler   *carbon.Handler
+	CashbookHandler *cashbook.Handler
+	ReportHandler   *report.Handler
 	AuthMid         gin.HandlerFunc
 	RateLimiter     *middleware.RateLimiter
 }
@@ -109,6 +113,12 @@ func New(opts Options) *gin.Engine {
 		}
 		if opts.CarbonHandler != nil {
 			opts.CarbonHandler.RegisterRoutes(v1, opts.AuthMid)
+		}
+		if opts.CashbookHandler != nil {
+			opts.CashbookHandler.RegisterRoutes(v1, opts.AuthMid)
+		}
+		if opts.ReportHandler != nil {
+			opts.ReportHandler.RegisterRoutes(v1, opts.AuthMid)
 		}
 	}
 

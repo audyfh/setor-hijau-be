@@ -13,6 +13,7 @@ import (
 
 	"github.com/audyfh/setor-hijau-be/internal/auth"
 	"github.com/audyfh/setor-hijau-be/internal/carbon"
+	"github.com/audyfh/setor-hijau-be/internal/cashbook"
 	"github.com/audyfh/setor-hijau-be/internal/deposit"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
@@ -22,6 +23,7 @@ import (
 	"github.com/audyfh/setor-hijau-be/internal/platform/logger"
 	"github.com/audyfh/setor-hijau-be/internal/platform/middleware"
 	"github.com/audyfh/setor-hijau-be/internal/platform/router"
+	"github.com/audyfh/setor-hijau-be/internal/report"
 	"github.com/audyfh/setor-hijau-be/internal/tenant"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -30,11 +32,13 @@ import (
 
 // TestHarness bundles test infrastructure for integration tests.
 type TestHarness struct {
-	DB            *db.DB
-	Server        *httptest.Server
-	Config        *config.Config
-	AuthService   auth.Service
-	CarbonService carbon.Service
+	DB              *db.DB
+	Server          *httptest.Server
+	Config          *config.Config
+	AuthService     auth.Service
+	CarbonService   carbon.Service
+	CashbookService cashbook.Service
+	ReportService   report.Service
 }
 
 // SetupTestHarness initializes a connected database, runs migrations, and starts a test server.
@@ -112,6 +116,14 @@ func SetupTestHarness(t *testing.T) *TestHarness {
 	carbonService := carbon.NewService(carbonRepo)
 	carbonHandler := carbon.NewHandler(carbonService)
 
+	cashbookRepo := cashbook.NewRepository(database.Pool)
+	cashbookService := cashbook.NewService(cashbookRepo)
+	cashbookHandler := cashbook.NewHandler(cashbookService)
+
+	reportRepo := report.NewRepository(database.Pool)
+	reportService := report.NewService(reportRepo)
+	reportHandler := report.NewHandler(reportService)
+
 	authMid := middleware.AuthMiddleware([]byte(cfg.JWTSecret))
 	rateLimiter := middleware.NewRateLimiter(100, 1*time.Minute)
 
@@ -125,6 +137,8 @@ func SetupTestHarness(t *testing.T) *TestHarness {
 		MaterialHandler: materialHandler,
 		DepositHandler:  depositHandler,
 		CarbonHandler:   carbonHandler,
+		CashbookHandler: cashbookHandler,
+		ReportHandler:   reportHandler,
 		AuthMid:         authMid,
 		RateLimiter:     rateLimiter,
 	})
@@ -137,11 +151,13 @@ func SetupTestHarness(t *testing.T) *TestHarness {
 	})
 
 	return &TestHarness{
-		DB:            database,
-		Server:        server,
-		Config:        cfg,
-		AuthService:   authService,
-		CarbonService: carbonService,
+		DB:              database,
+		Server:          server,
+		Config:          cfg,
+		AuthService:     authService,
+		CarbonService:   carbonService,
+		CashbookService: cashbookService,
+		ReportService:   reportService,
 	}
 }
 

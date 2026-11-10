@@ -95,7 +95,20 @@ _Update this section whenever work is handed off._
     - Struk digital (`GET /api/v1/deposits/:id/receipt`) enriched with estimated CO2e breakdown per line and total avoided CO2e.
     - Idempotent replay preserves atomic single-ledger integrity.
   - Tests passing: 14 hand-verified unit calculation tests in `internal/carbon/service_test.go` and comprehensive integration test suite in `test/integration/carbon_test.go` covering workflow, receipts, idempotency, reversals, and strict multi-tenant isolation.
-- Next: M5 (Cashbook & Monthly Closure), see `docs/plans/ROADMAP.md`.
+- Milestone M5 (cashbook, dashboard, & reports) is completed:
+  - ADR 0009 (`docs/decisions/0009-cashbook-and-monthly-reports.md`) and updated `docs/DATA-MODEL.md`.
+  - Database migration `000006_m5_cashbook_reports` creating `sales_to_pengepul`, `sales_to_pengepul_lines`, `nasabah_withdrawals`, and `cashbook_entries`.
+  - Cashbook module (`internal/cashbook`):
+    - Sales to Pengepul (`POST /api/v1/cashbook/sales` & `GET /api/v1/cashbook/sales/:id`) recording wholesale waste sales with itemized lines, atomically creating `cash_in` entries in the cashbook.
+    - Nasabah Cash Withdrawals (`POST /api/v1/nasabah/:id/withdrawals` & `GET /api/v1/nasabah/me/withdrawals`) with strict overdraft protection and atomic `cash_out` entries in the cashbook.
+    - Derived balance updated across the platform: `current_balance_idr = SUM(deposits) - SUM(withdrawals)`.
+    - Manual cash movements (`POST /api/v1/cashbook/entries`), cash summary (`GET /api/v1/cashbook/summary`), and automatic financial reconciliation (`GET /api/v1/cashbook/reconciliation`) verifying exact reconciliation between sales, withdrawals, cash on hand, and outstanding nasabah liabilities.
+  - Report module (`internal/report`):
+    - Monthly Dashboard (`GET /api/v1/dashboard/monthly?month=YYYY-MM`) with operational, financial, gross margin, and avoided CO2e metrics.
+    - Official CSV export (`GET /api/v1/reports/monthly/csv`) formatted with UTF-8 BOM (`\xef\xbb\xbf`) for Indonesian Excel compatibility.
+    - Pure Go PDF export (`GET /api/v1/reports/monthly/pdf`) using `jung-kurt/gofpdf` adhering to Green Software Engineering (sub-second rendering, ~30 KB payload, zero headless browser/Chromium bloat).
+  - Tests passing: unit tests in `internal/cashbook` and `internal/report`, and comprehensive integration tests in `test/integration/cashbook_test.go` and `test/integration/report_test.go`. Total suite: 72 tests across 18 packages passing, `go vet` clean.
+- Next: M6 (Net Impact Meter and Public Method Page), see `docs/plans/ROADMAP.md`.
 
 ## Open questions
 - Where CO2.js runs (frontend most likely) and how the API receives digital-footprint measurements: decide in M6.

@@ -109,6 +109,8 @@ type DigitalReceiptResponse struct {
 type NasabahBalanceResponse struct {
 	NasabahID          uuid.UUID  `json:"nasabah_id"`
 	CurrentBalanceIDR  int64      `json:"current_balance_idr"`
+	TotalDepositedIDR  int64      `json:"total_deposited_idr"`
+	TotalWithdrawnIDR  int64      `json:"total_withdrawn_idr"`
 	TotalWeightGrams   int64      `json:"total_weight_grams"`
 	TotalDepositsCount int64      `json:"total_deposits_count"`
 	LastDepositAt      *time.Time `json:"last_deposit_at,omitempty"`

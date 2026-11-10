@@ -432,13 +432,86 @@ Append-only environmental journal for estimated avoided CO2e emissions (Hard Rul
 - `CREATE INDEX idx_carbon_ledger_deposit ON carbon_ledger(deposit_id);`
 - `CREATE INDEX idx_carbon_ledger_created_at ON carbon_ledger(bank_sampah_id, created_at DESC);`
 
+### 12. `sales_to_pengepul`
+Records wholesale sales of collected recyclables to commercial buyers/collectors (ADR 0009).
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique sale identifier |
+| `bank_sampah_id` | `UUID` | `NOT NULL REFERENCES bank_sampah(id) ON DELETE CASCADE` | Associated tenant |
+| `buyer_name` | `VARCHAR(150)` | `NOT NULL` | Name of collector / lapak buyer |
+| `sale_date` | `TIMESTAMPTZ` | `NOT NULL` | Transaction date |
+| `total_weight_grams` | `BIGINT` | `NOT NULL CHECK (total_weight_grams >= 0)` | Total weight of sold materials in grams |
+| `total_amount_idr` | `BIGINT` | `NOT NULL CHECK (total_amount_idr >= 0)` | Total sale revenue in IDR |
+| `notes` | `TEXT` | `NULL` | Optional transaction notes |
+| `recorded_by` | `UUID` | `NOT NULL REFERENCES users(id) ON DELETE RESTRICT` | Pengelola recording the sale |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Record creation timestamp |
+
+*Indexes:*
+- `CREATE INDEX idx_sales_to_pengepul_bank_sampah ON sales_to_pengepul(bank_sampah_id);`
+- `CREATE INDEX idx_sales_to_pengepul_date ON sales_to_pengepul(bank_sampah_id, sale_date DESC);`
+
+### 13. `sales_to_pengepul_lines`
+Itemized line items for wholesale waste sales.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique line item ID |
+| `sale_id` | `UUID` | `NOT NULL REFERENCES sales_to_pengepul(id) ON DELETE CASCADE` | Parent sale transaction |
+| `material_type_id` | `UUID` | `NOT NULL REFERENCES material_types(id) ON DELETE RESTRICT` | Material sold |
+| `weight_grams` | `BIGINT` | `NOT NULL CHECK (weight_grams > 0)` | Weight sold in grams |
+| `price_per_kg_idr` | `BIGINT` | `NOT NULL CHECK (price_per_kg_idr >= 0)` | Wholesale price negotiated per kg |
+| `subtotal_idr` | `BIGINT` | `NOT NULL CHECK (subtotal_idr >= 0)` | Subtotal in IDR |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Record creation timestamp |
+
+*Indexes:*
+- `CREATE INDEX idx_sales_to_pengepul_lines_sale_id ON sales_to_pengepul_lines(sale_id);`
+
+### 14. `nasabah_withdrawals`
+Records cash withdrawals (tarik tunai) by nasabah against their accumulated waste balance (Domain Invariant #2, ADR 0009).
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique withdrawal identifier |
+| `bank_sampah_id` | `UUID` | `NOT NULL REFERENCES bank_sampah(id) ON DELETE CASCADE` | Associated tenant |
+| `nasabah_id` | `UUID` | `NOT NULL REFERENCES users(id) ON DELETE RESTRICT` | Nasabah withdrawing funds |
+| `amount_idr` | `BIGINT` | `NOT NULL CHECK (amount_idr > 0)` | Withdrawn amount in IDR |
+| `notes` | `TEXT` | `NULL` | Optional disbursement notes |
+| `recorded_by` | `UUID` | `NOT NULL REFERENCES users(id) ON DELETE RESTRICT` | Pengelola dispensing cash |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Record creation timestamp |
+
+*Indexes:*
+- `CREATE INDEX idx_nasabah_withdrawals_bank_sampah ON nasabah_withdrawals(bank_sampah_id);`
+- `CREATE INDEX idx_nasabah_withdrawals_nasabah ON nasabah_withdrawals(bank_sampah_id, nasabah_id);`
+- `CREATE INDEX idx_nasabah_withdrawals_created_at ON nasabah_withdrawals(bank_sampah_id, created_at DESC);`
+
+### 15. `cashbook_entries`
+Append-only physical cash treasury ledger for the bank sampah (Hard Rules #1, #2, #3, ADR 0009).
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique entry ID |
+| `bank_sampah_id` | `UUID` | `NOT NULL REFERENCES bank_sampah(id) ON DELETE CASCADE` | Associated tenant |
+| `entry_type` | `VARCHAR(16)` | `NOT NULL CHECK (entry_type IN ('cash_in', 'cash_out'))` | Cash movement direction |
+| `category` | `VARCHAR(64)` | `NOT NULL` | Category: `penjualan_pengepul`, `penarikan_nasabah`, `operasional`, `modal_awal`, `hibah_donasi`, `lainnya` |
+| `amount_idr` | `BIGINT` | `NOT NULL CHECK (amount_idr > 0)` | Magnitude of cash moved in IDR |
+| `reference_id` | `UUID` | `NULL` | Foreign reference (e.g. sale ID or withdrawal ID) |
+| `description` | `TEXT` | `NOT NULL` | Human-readable explanation |
+| `recorded_by` | `UUID` | `NOT NULL REFERENCES users(id) ON DELETE RESTRICT` | Pengelola recording the entry |
+| `transaction_date` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Date when cash was transferred |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Record creation timestamp |
+
+*Indexes and Constraints:*
+- `CREATE INDEX idx_cashbook_entries_bank_sampah ON cashbook_entries(bank_sampah_id);`
+- `CREATE INDEX idx_cashbook_entries_date ON cashbook_entries(bank_sampah_id, transaction_date DESC);`
+- `CREATE INDEX idx_cashbook_entries_category ON cashbook_entries(bank_sampah_id, category);`
+- Trigger append-only: prevents `UPDATE` and `DELETE`.
+
 ---
 
 ## Preview: Subsequent Milestone Entities
 
 The following entities are planned for upcoming milestones and will be migrated incrementally:
 
-- **M5 (Cashbook)**:
-  - `cashbook_entries`: Financial journal (`id`, `bank_sampah_id`, `deposit_id`, `entry_type`, `amount_idr`, `balance_after_idr`, `description`, `created_at`).
 - **M6 (Net Impact Meter)**:
   - `digital_footprint_measurements`: SWDM v4 web digital footprint logs (`id`, `data_bytes_transferred`, `co2e_grams`, `period_start`, `period_end`).

@@ -553,6 +553,8 @@ func (s *service) GetNasabahBalance(ctx context.Context, bankSampahID, nasabahID
 	return &NasabahBalanceResponse{
 		NasabahID:          nasabahID,
 		CurrentBalanceIDR:  row.CurrentBalanceIdr,
+		TotalDepositedIDR:  row.TotalDepositedIdr,
+		TotalWithdrawnIDR:  row.TotalWithdrawnIdr,
 		TotalWeightGrams:   row.TotalWeightGrams,
 		TotalDepositsCount: row.TotalDepositsCount,
 		LastDepositAt:      lastDepositTime,

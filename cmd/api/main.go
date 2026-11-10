@@ -13,6 +13,7 @@ import (
 
 	"github.com/audyfh/setor-hijau-be/internal/auth"
 	"github.com/audyfh/setor-hijau-be/internal/carbon"
+	"github.com/audyfh/setor-hijau-be/internal/cashbook"
 	"github.com/audyfh/setor-hijau-be/internal/deposit"
 	"github.com/audyfh/setor-hijau-be/internal/material"
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
@@ -22,6 +23,7 @@ import (
 	"github.com/audyfh/setor-hijau-be/internal/platform/logger"
 	"github.com/audyfh/setor-hijau-be/internal/platform/middleware"
 	"github.com/audyfh/setor-hijau-be/internal/platform/router"
+	"github.com/audyfh/setor-hijau-be/internal/report"
 	"github.com/audyfh/setor-hijau-be/internal/tenant"
 )
 
@@ -77,6 +79,14 @@ func main() {
 	carbonService := carbon.NewService(carbonRepo)
 	carbonHandler := carbon.NewHandler(carbonService)
 
+	cashbookRepo := cashbook.NewRepository(database.Pool)
+	cashbookService := cashbook.NewService(cashbookRepo)
+	cashbookHandler := cashbook.NewHandler(cashbookService)
+
+	reportRepo := report.NewRepository(database.Pool)
+	reportService := report.NewService(reportRepo)
+	reportHandler := report.NewHandler(reportService)
+
 	authMid := middleware.AuthMiddleware([]byte(cfg.JWTSecret))
 	rateLimiter := middleware.NewRateLimiter(30, 1*time.Minute)
 
@@ -90,6 +100,8 @@ func main() {
 		MaterialHandler: materialHandler,
 		DepositHandler:  depositHandler,
 		CarbonHandler:   carbonHandler,
+		CashbookHandler: cashbookHandler,
+		ReportHandler:   reportHandler,
 		AuthMid:         authMid,
 		RateLimiter:     rateLimiter,
 	})

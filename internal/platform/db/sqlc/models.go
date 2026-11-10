@@ -41,6 +41,19 @@ type CarbonLedger struct {
 	CreatedAt        pgtype.Timestamptz
 }
 
+type CashbookEntry struct {
+	ID              pgtype.UUID
+	BankSampahID    pgtype.UUID
+	EntryType       string
+	Category        string
+	AmountIdr       int64
+	ReferenceID     pgtype.UUID
+	Description     string
+	RecordedBy      pgtype.UUID
+	TransactionDate pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+}
+
 type Deposit struct {
 	ID               pgtype.UUID
 	BankSampahID     pgtype.UUID
@@ -116,6 +129,16 @@ type NasabahProfile struct {
 	UpdatedAt         pgtype.Timestamptz
 }
 
+type NasabahWithdrawal struct {
+	ID           pgtype.UUID
+	BankSampahID pgtype.UUID
+	NasabahID    pgtype.UUID
+	AmountIdr    int64
+	Notes        pgtype.Text
+	RecordedBy   pgtype.UUID
+	CreatedAt    pgtype.Timestamptz
+}
+
 type PasswordResetToken struct {
 	ID        pgtype.UUID
 	UserID    pgtype.UUID
@@ -132,6 +155,28 @@ type RefreshToken struct {
 	ExpiresAt pgtype.Timestamptz
 	RevokedAt pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
+}
+
+type SalesToPengepul struct {
+	ID               pgtype.UUID
+	BankSampahID     pgtype.UUID
+	BuyerName        string
+	SaleDate         pgtype.Timestamptz
+	TotalWeightGrams int64
+	TotalAmountIdr   int64
+	Notes            pgtype.Text
+	RecordedBy       pgtype.UUID
+	CreatedAt        pgtype.Timestamptz
+}
+
+type SalesToPengepulLine struct {
+	ID             pgtype.UUID
+	SaleID         pgtype.UUID
+	MaterialTypeID pgtype.UUID
+	WeightGrams    int64
+	PricePerKgIdr  int64
+	SubtotalIdr    int64
+	CreatedAt      pgtype.Timestamptz
 }
 
 type SystemMetadatum struct {

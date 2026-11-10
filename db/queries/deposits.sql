@@ -116,12 +116,14 @@ WHERE d.bank_sampah_id = $1
 
 -- name: GetNasabahBalance :one
 SELECT 
-    COALESCE(SUM(total_amount_idr), 0)::bigint AS current_balance_idr,
-    COALESCE(SUM(total_weight_grams), 0)::bigint AS total_weight_grams,
-    COUNT(*)::bigint AS total_deposits_count,
-    MAX(client_recorded_at)::timestamptz AS last_deposit_at
-FROM deposits
-WHERE bank_sampah_id = $1 AND nasabah_id = $2;
+    (COALESCE(SUM(d.total_amount_idr), 0) - COALESCE((SELECT SUM(nw.amount_idr) FROM nasabah_withdrawals nw WHERE nw.bank_sampah_id = $1 AND nw.nasabah_id = $2), 0))::bigint AS current_balance_idr,
+    COALESCE(SUM(d.total_amount_idr), 0)::bigint AS total_deposited_idr,
+    COALESCE((SELECT SUM(nw.amount_idr) FROM nasabah_withdrawals nw WHERE nw.bank_sampah_id = $1 AND nw.nasabah_id = $2), 0)::bigint AS total_withdrawn_idr,
+    COALESCE(SUM(d.total_weight_grams), 0)::bigint AS total_weight_grams,
+    COUNT(d.id)::bigint AS total_deposits_count,
+    MAX(d.client_recorded_at)::timestamptz AS last_deposit_at
+FROM deposits d
+WHERE d.bank_sampah_id = $1 AND d.nasabah_id = $2;
 
 -- name: GetMaterialPriceAtTime :one
 SELECT mt.id AS material_id,
