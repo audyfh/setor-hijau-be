@@ -1,0 +1,764 @@
+openapi: 3.0.3
+info:
+  title: Setor Hijau Backend API
+  version: 1.0.0
+  description: |
+    Multi-tenant SaaS Waste Bank (Bank Sampah) API at RW level with Rupiah Balance,
+    Append-Only Carbon Ledger (EPA WARM v16 estimates), Cashbook, Reports, and Net Impact Meter (SWDM v4 estimates).
+
+    **Authentication:** Click **Authorize** and enter `Bearer <access_token>` (or just `<access_token>` in Swagger UI Bearer auth).
+tags:
+  - name: System
+  - name: Tenants
+  - name: Auth
+  - name: Nasabah
+  - name: Materials
+  - name: Deposits
+  - name: Carbon
+  - name: Cashbook
+  - name: Reports
+  - name: Impact & Methods (Public)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+    RegisterTenantRequest:
+      type: object
+      required: [name, code, address, rw, kelurahan, kecamatan, kabupaten_kota, provinsi, pengelola_username, pengelola_email, pengelola_password, pengelola_full_name]
+      properties:
+        name: { type: string, example: "Bank Sampah Melati RW 05" }
+        code: { type: string, example: "BSM-RW05" }
+        address: { type: string, example: "Jl. Melati No. 12" }
+        rw: { type: string, example: "05" }
+        rt: { type: string, example: "02" }
+        kelurahan: { type: string, example: "Lowokwaru" }
+        kecamatan: { type: string, example: "Lowokwaru" }
+        kabupaten_kota: { type: string, example: "Kota Malang" }
+        provinsi: { type: string, example: "Jawa Timur" }
+        contact_phone: { type: string, example: "081234567890" }
+        pengelola_username: { type: string, minLength: 3, example: "admin_melati" }
+        pengelola_email: { type: string, format: email, example: "admin@melati.id" }
+        pengelola_password: { type: string, minLength: 8, example: "Rahasia123!" }
+        pengelola_full_name: { type: string, example: "Budi Santoso" }
+        pengelola_phone: { type: string, example: "081234567890" }
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier: { type: string, example: "admin_melati" }
+        password: { type: string, example: "Rahasia123!" }
+        bank_sampah_code: { type: string, description: "Required for Nasabah login", example: "BSM-RW05" }
+    QRLoginRequest:
+      type: object
+      required: [qr_token, pin]
+      properties:
+        qr_token: { type: string }
+        pin: { type: string, example: "123456" }
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+    ResetPasswordRequest:
+      type: object
+      required: [token, new_password]
+      properties:
+        token: { type: string }
+        new_password: { type: string, minLength: 8 }
+    CreateNasabahRequest:
+      type: object
+      required: [username, password, full_name, rw]
+      properties:
+        username: { type: string, minLength: 3, maxLength: 50 }
+        password: { type: string, minLength: 8 }
+        full_name: { type: string, minLength: 2, maxLength: 255 }
+        email: { type: string, format: email }
+        phone: { type: string }
+        rw: { type: string, example: "05" }
+        rt: { type: string, example: "01" }
+        address_notes: { type: string }
+        pin: { type: string, pattern: "^[0-9]{6}$", example: "123456" }
+    UpdateNasabahRequest:
+      type: object
+      required: [full_name, rw]
+      properties:
+        full_name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        rw: { type: string }
+        rt: { type: string }
+        address_notes: { type: string }
+        is_active: { type: boolean }
+    CreateMaterialRequest:
+      type: object
+      required: [name, category, price_per_kg_idr]
+      properties:
+        name: { type: string, example: "Botol PET Bening" }
+        category: { type: string, example: "plastik" }
+        unit: { type: string, example: "kg" }
+        description: { type: string }
+        emission_factor_id: { type: string, format: uuid }
+        price_per_kg_idr: { type: integer, minimum: 0, example: 3500 }
+    UpdateMaterialRequest:
+      type: object
+      required: [name, category, is_active]
+      properties:
+        name: { type: string }
+        category: { type: string }
+        unit: { type: string }
+        description: { type: string }
+        emission_factor_id: { type: string, format: uuid }
+        is_active: { type: boolean }
+    UpdatePriceRequest:
+      type: object
+      required: [price_per_kg_idr]
+      properties:
+        price_per_kg_idr: { type: integer, minimum: 0, example: 4000 }
+    CreateDepositRequest:
+      type: object
+      required: [nasabah_id, idempotency_key, client_recorded_at, lines]
+      properties:
+        nasabah_id: { type: string, format: uuid }
+        idempotency_key: { type: string, maxLength: 64, example: "offline-dep-001" }
+        client_recorded_at: { type: string, format: date-time }
+        notes: { type: string }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [material_type_id, weight_grams]
+            properties:
+              material_type_id: { type: string, format: uuid }
+              weight_grams: { type: integer, minimum: 1, example: 1500 }
+    BatchSyncRequest:
+      type: object
+      required: [deposits]
+      properties:
+        deposits:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateDepositRequest"
+    CreateReversalRequest:
+      type: object
+      required: [carbon_ledger_id, notes]
+      properties:
+        carbon_ledger_id: { type: string, format: uuid }
+        notes: { type: string, minLength: 3, maxLength: 500 }
+    CreateSaleRequest:
+      type: object
+      required: [buyer_name, sale_date, lines]
+      properties:
+        buyer_name: { type: string, example: "Pengepul Jaya" }
+        sale_date: { type: string, format: date-time }
+        notes: { type: string }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [material_type_id, weight_grams, price_per_kg_idr]
+            properties:
+              material_type_id: { type: string, format: uuid }
+              weight_grams: { type: integer, minimum: 1 }
+              price_per_kg_idr: { type: integer, minimum: 0 }
+    CreateWithdrawalRequest:
+      type: object
+      required: [amount_idr]
+      properties:
+        amount_idr: { type: integer, minimum: 1, example: 25000 }
+        notes: { type: string }
+    CreateCashbookEntryRequest:
+      type: object
+      required: [entry_type, category, amount_idr, description]
+      properties:
+        entry_type: { type: string, enum: [cash_in, cash_out] }
+        category: { type: string, example: "operational" }
+        amount_idr: { type: integer, minimum: 1 }
+        description: { type: string }
+        transaction_date: { type: string, format: date-time }
+    RecordTelemetryRequest:
+      type: object
+      required: [page_path, data_bytes_transferred]
+      properties:
+        bank_sampah_id: { type: string, format: uuid }
+        bank_sampah_code: { type: string }
+        session_id: { type: string }
+        page_path: { type: string, example: "/dashboard" }
+        data_bytes_transferred: { type: integer, minimum: 0, example: 145000 }
+        visitor_type: { type: string, enum: [new, returning] }
+        client_timestamp: { type: string, format: date-time }
+
+paths:
+  /healthz:
+    get:
+      tags: [System]
+      summary: Liveness probe
+      responses:
+        "200": { description: Process is alive }
+  /readyz:
+    get:
+      tags: [System]
+      summary: Readiness probe (database connectivity)
+      responses:
+        "200": { description: Database connected }
+        "503": { description: Database unavailable }
+
+  /api/v1/tenants/register:
+    post:
+      tags: [Tenants]
+      summary: Register a new Bank Sampah tenant & initial Pengelola
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterTenantRequest" }
+      responses:
+        "201": { description: Tenant and Pengelola created }
+        "400": { description: Validation error }
+        "409": { description: Code/username/email conflict }
+  /api/v1/tenants/current:
+    get:
+      tags: [Tenants]
+      summary: Get current tenant profile
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Current tenant details }
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with identifier + password (Pengelola or Nasabah)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200": { description: Access & refresh token pair }
+        "401": { description: Invalid credentials }
+  /api/v1/auth/login/qr:
+    post:
+      tags: [Auth]
+      summary: Optional QR token + PIN login (Nasabah only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QRLoginRequest" }
+      responses:
+        "200": { description: Access & refresh token pair }
+        "401": { description: Invalid QR or PIN }
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshTokenRequest" }
+      responses:
+        "200": { description: New token pair }
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshTokenRequest" }
+      responses:
+        "200": { description: Logged out }
+  /api/v1/auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request password reset token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ForgotPasswordRequest" }
+      responses:
+        "200": { description: Reset instructions sent if account exists }
+  /api/v1/auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password with token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetPasswordRequest" }
+      responses:
+        "200": { description: Password updated }
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: User profile }
+
+  /api/v1/nasabah:
+    post:
+      tags: [Nasabah]
+      summary: Create Nasabah (Pengelola)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateNasabahRequest" }
+      responses:
+        "201": { description: Nasabah created with QR token }
+    get:
+      tags: [Nasabah]
+      summary: List Nasabah in tenant (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: rw, schema: { type: string } }
+        - { in: query, name: rt, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Paginated list }
+  /api/v1/nasabah/lookup-qr:
+    post:
+      tags: [Nasabah]
+      summary: Lookup Nasabah by QR token for deposit recording (Pengelola)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qr_token]
+              properties: { qr_token: { type: string } }
+      responses:
+        "200": { description: Nasabah identity }
+  /api/v1/nasabah/{id}:
+    get:
+      tags: [Nasabah]
+      summary: Get Nasabah detail (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Nasabah detail }
+    put:
+      tags: [Nasabah]
+      summary: Update Nasabah (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateNasabahRequest" }
+      responses:
+        "200": { description: Updated }
+  /api/v1/nasabah/{id}/regenerate-qr:
+    post:
+      tags: [Nasabah]
+      summary: Regenerate Nasabah QR token (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: New QR token }
+  /api/v1/nasabah/{id}/reset-password:
+    post:
+      tags: [Nasabah]
+      summary: Reset Nasabah password (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_password]
+              properties: { new_password: { type: string, minLength: 8 } }
+      responses:
+        "200": { description: Password reset }
+  /api/v1/nasabah/{id}/reset-pin:
+    post:
+      tags: [Nasabah]
+      summary: Reset Nasabah 6-digit PIN (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties: { pin: { type: string, pattern: "^[0-9]{6}$" } }
+      responses:
+        "200": { description: PIN reset }
+  /api/v1/nasabah/me:
+    get:
+      tags: [Nasabah]
+      summary: Get own Nasabah profile (Nasabah)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Profile }
+  /api/v1/nasabah/me/pin:
+    put:
+      tags: [Nasabah]
+      summary: Set or update own 6-digit PIN (Nasabah)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties: { pin: { type: string, pattern: "^[0-9]{6}$" } }
+      responses:
+        "200": { description: PIN updated }
+
+  /api/v1/materials:
+    get:
+      tags: [Materials]
+      summary: List material types with current prices
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Material list }
+    post:
+      tags: [Materials]
+      summary: Create material type + initial price (Pengelola)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMaterialRequest" }
+      responses:
+        "201": { description: Material created }
+  /api/v1/materials/{id}:
+    get:
+      tags: [Materials]
+      summary: Get material type detail
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Material detail }
+    put:
+      tags: [Materials]
+      summary: Update material metadata (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMaterialRequest" }
+      responses:
+        "200": { description: Updated }
+  /api/v1/materials/{id}/prices:
+    post:
+      tags: [Materials]
+      summary: Append new material price (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePriceRequest" }
+      responses:
+        "201": { description: Price updated }
+    get:
+      tags: [Materials]
+      summary: Get append-only price history (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Price history }
+
+  /api/v1/deposits:
+    post:
+      tags: [Deposits]
+      summary: Record deposit (idempotent, Pengelola)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDepositRequest" }
+      responses:
+        "201": { description: Deposit created }
+        "200": { description: Idempotent replay of existing deposit }
+    get:
+      tags: [Deposits]
+      summary: List deposits (tenant-scoped; Nasabah sees own only)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Deposit list }
+  /api/v1/deposits/sync:
+    post:
+      tags: [Deposits]
+      summary: Batch offline deposit sync (Pengelola)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BatchSyncRequest" }
+      responses:
+        "200": { description: Sync results }
+  /api/v1/deposits/{id}:
+    get:
+      tags: [Deposits]
+      summary: Get deposit detail
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Deposit detail }
+  /api/v1/deposits/{id}/receipt:
+    get:
+      tags: [Deposits]
+      summary: Get digital receipt (Struk Digital) with Rupiah & estimated CO2e
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Digital receipt }
+  /api/v1/nasabah/me/balance:
+    get:
+      tags: [Deposits]
+      summary: Get own derived Rupiah balance (Nasabah)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Balance }
+  /api/v1/nasabah/{id}/balance:
+    get:
+      tags: [Deposits]
+      summary: Get Nasabah derived Rupiah balance (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Balance }
+
+  /api/v1/carbon/factors:
+    get:
+      tags: [Carbon]
+      summary: List active EPA WARM v16 emission factors
+      responses:
+        "200": { description: Emission factors }
+  /api/v1/carbon/ledger:
+    get:
+      tags: [Carbon]
+      summary: List append-only carbon ledger entries
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Carbon ledger }
+  /api/v1/carbon/balance:
+    get:
+      tags: [Carbon]
+      summary: Get own estimated CO2e savings (Nasabah)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Carbon savings }
+  /api/v1/carbon/summary:
+    get:
+      tags: [Carbon]
+      summary: Get tenant total estimated CO2e savings (Pengelola)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Tenant carbon summary }
+  /api/v1/carbon/reversals:
+    post:
+      tags: [Carbon]
+      summary: Record reversing carbon ledger entry (Pengelola)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReversalRequest" }
+      responses:
+        "201": { description: Reversal recorded }
+  /api/v1/nasabah/me/carbon:
+    get:
+      tags: [Carbon]
+      summary: Get own estimated CO2e savings (Nasabah)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Carbon savings }
+  /api/v1/nasabah/{id}/carbon:
+    get:
+      tags: [Carbon]
+      summary: Get Nasabah estimated CO2e savings (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Carbon savings }
+
+  /api/v1/cashbook/sales:
+    post:
+      tags: [Cashbook]
+      summary: Record wholesale sale to Pengepul (Pengelola)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSaleRequest" }
+      responses:
+        "201": { description: Sale recorded }
+    get:
+      tags: [Cashbook]
+      summary: List sales to Pengepul (Pengelola)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Sales list }
+  /api/v1/cashbook/sales/{id}:
+    get:
+      tags: [Cashbook]
+      summary: Get sale detail (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Sale detail }
+  /api/v1/cashbook/entries:
+    post:
+      tags: [Cashbook]
+      summary: Create manual cashbook entry (Pengelola)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCashbookEntryRequest" }
+      responses:
+        "201": { description: Entry created }
+    get:
+      tags: [Cashbook]
+      summary: List cashbook entries (Pengelola)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Cashbook entries }
+  /api/v1/cashbook/summary:
+    get:
+      tags: [Cashbook]
+      summary: Get cashbook summary (Pengelola)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Summary }
+  /api/v1/cashbook/reconciliation:
+    get:
+      tags: [Cashbook]
+      summary: Get financial reconciliation (Pengelola)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Reconciliation report }
+  /api/v1/nasabah/me/withdrawals:
+    get:
+      tags: [Cashbook]
+      summary: List own cash withdrawals (Nasabah)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Withdrawals }
+  /api/v1/nasabah/{id}/withdrawals:
+    post:
+      tags: [Cashbook]
+      summary: Record Nasabah cash withdrawal (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateWithdrawalRequest" }
+      responses:
+        "201": { description: Withdrawal recorded }
+    get:
+      tags: [Cashbook]
+      summary: List Nasabah cash withdrawals (Pengelola)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Withdrawals }
+
+  /api/v1/dashboard/monthly:
+    get:
+      tags: [Reports]
+      summary: Monthly operational, financial & carbon dashboard
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: query, name: month, required: true, schema: { type: string, example: "2026-11" } }]
+      responses:
+        "200": { description: Monthly dashboard metrics }
+  /api/v1/reports/monthly/csv:
+    get:
+      tags: [Reports]
+      summary: Export monthly report as CSV (UTF-8 BOM)
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: query, name: month, required: true, schema: { type: string, example: "2026-11" } }]
+      responses:
+        "200": { description: CSV file download }
+  /api/v1/reports/monthly/pdf:
+    get:
+      tags: [Reports]
+      summary: Export monthly report as PDF
+      security: [{ BearerAuth: [] }]
+      parameters: [{ in: query, name: month, required: true, schema: { type: string, example: "2026-11" } }]
+      responses:
+        "200": { description: PDF file download }
+
+  /api/v1/public/methods:
+    get:
+      tags: [Impact & Methods (Public)]
+      summary: Public Metode & Sumber (EPA WARM v16 + SWDM v4 constants and formulas)
+      responses:
+        "200": { description: Methodology & citations }
+  /api/v1/public/impact:
+    get:
+      tags: [Impact & Methods (Public)]
+      summary: Platform-wide Net Impact Meter
+      responses:
+        "200": { description: Avoided CO2e minus digital footprint }
+  /api/v1/public/impact/tenants/{code}:
+    get:
+      tags: [Impact & Methods (Public)]
+      summary: Public Net Impact Meter by Bank Sampah code
+      parameters: [{ in: path, name: code, required: true, schema: { type: string, example: "BSM-RW05" } }]
+      responses:
+        "200": { description: Tenant Net Impact }
+  /api/v1/public/impact/telemetry:
+    post:
+      tags: [Impact & Methods (Public)]
+      summary: Record client data transfer telemetry for SWDM v4 calculation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordTelemetryRequest" }
+      responses:
+        "201": { description: Telemetry recorded }
+  /api/v1/impact/tenant:
+    get:
+      tags: [Impact & Methods (Public)]
+      summary: Authenticated tenant Net Impact Meter
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Tenant Net Impact }

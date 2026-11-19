@@ -1,0 +1,16 @@
+# Environment variables (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Binaries and build outputs
+/api
+/migrate
+/bin/
+*.exe
+*.out
+coverage.txt
+
+# OS / IDE
+.DS_Store
+Thumbs.db

@@ -120,7 +120,13 @@ _Update this section whenever work is handed off._
     - Authenticated tenant impact endpoint (`GET /api/v1/impact/tenant`) for logged-in Pengelola and Nasabah.
     - Public method and citations endpoint (`GET /api/v1/public/methods`) listing academic statements, all active WARM v16 emission factors, SWDM v4 constants, and explicit formulas for thesis defensibility.
   - Tests passing: 8 unit tests in `internal/impact/service_test.go` and comprehensive integration tests in `test/integration/impact_test.go`. Total suite: 82 tests across 19 packages passing, `go vet` clean.
-- Next: M7 (Deploy and Portability: Cloud Run, Cloud SQL, Supabase fallback, and verification), see `docs/plans/ROADMAP.md`.
+- Milestone M7 (deploy & portability — code & docs ready, awaiting live GCP + NeonDB verification):
+  - ADR 0011 (`docs/decisions/0011-neondb-primary-database.md`) selecting NeonDB (PostgreSQL 16) as primary managed DB with Google Cloud Run, preserving `DATABASE_URL`-only portability for Cloud SQL and Supabase.
+  - Pooler & serverless DB compatibility in `internal/platform/db/db.go` (`pgx.QueryExecModeExec` default unless overridden, `MinConns = 0`, `MaxConnIdleTime = 5m`, `10s` ping timeout, configurable `DB_MAX_CONNS`).
+  - CORS middleware (`internal/platform/middleware/cors.go`) configured via `CORS_ALLOWED_ORIGINS` and `5s` `/readyz` timeout in `internal/platform/router/router.go`.
+  - Step-by-step NeonDB + GCP Console deployment guide in `docs/DEPLOYMENT.md`.
+  - Remaining: execute live NeonDB + Cloud Run deployment & portability verification using `docs/DEPLOYMENT.md`.
+- Active plan: `docs/plans/active/M7-deploy-portability.md`.
 
 ## Open questions
 - Digital footprint measurement model: resolved in ADR 0010 (SWDM v4 with client byte telemetry and server-side deterministic integer math).

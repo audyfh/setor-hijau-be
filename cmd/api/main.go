@@ -29,6 +29,10 @@ import (
 )
 
 func main() {
+	if err := config.LoadDotEnv(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load .env file: %v\n", err)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
@@ -42,10 +46,12 @@ func main() {
 	)
 
 	// Connect to database
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	database, err := db.Connect(ctx, cfg.DatabaseURL)
+	database, err := db.ConnectWithOptions(ctx, cfg.DatabaseURL, db.Options{
+		MaxConns: cfg.DBMaxConns,
+	})
 	if err != nil {
 		log.Error("failed to initialize database connection pool", slog.String("error", err.Error()))
 		os.Exit(1)

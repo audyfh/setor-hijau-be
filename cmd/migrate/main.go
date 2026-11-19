@@ -9,12 +9,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/audyfh/setor-hijau-be/internal/platform/config"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 func main() {
+	_ = config.LoadDotEnv()
+
 	var migrationsDir string
 	flag.StringVar(&migrationsDir, "dir", "db/migrations", "Path to migrations directory")
 	flag.Parse()
@@ -26,8 +29,11 @@ func main() {
 	}
 
 	command := args[0]
-	databaseURL := os.Getenv("DATABASE_URL")
-	if strings.TrimSpace(databaseURL) == "" {
+	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL_DIRECT"))
+	if databaseURL == "" {
+		databaseURL = strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	}
+	if databaseURL == "" {
 		fmt.Fprintf(os.Stderr, "Error: DATABASE_URL environment variable is required\n")
 		os.Exit(1)
 	}

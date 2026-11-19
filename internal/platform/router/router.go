@@ -15,6 +15,7 @@ import (
 	"github.com/audyfh/setor-hijau-be/internal/nasabah"
 	"github.com/audyfh/setor-hijau-be/internal/platform/config"
 	"github.com/audyfh/setor-hijau-be/internal/platform/db"
+	"github.com/audyfh/setor-hijau-be/internal/platform/docs"
 	"github.com/audyfh/setor-hijau-be/internal/platform/middleware"
 	"github.com/audyfh/setor-hijau-be/internal/report"
 	"github.com/audyfh/setor-hijau-be/internal/tenant"
@@ -52,6 +53,9 @@ func New(opts Options) *gin.Engine {
 	// Middlewares
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestID())
+	if opts.Config != nil && len(opts.Config.CORSAllowedOrigins) > 0 {
+		r.Use(middleware.CORS(opts.Config.CORSAllowedOrigins))
+	}
 	if opts.Logger != nil {
 		r.Use(middleware.StructuredLogger(opts.Logger))
 	}
@@ -62,6 +66,9 @@ func New(opts Options) *gin.Engine {
 			"status": "ok",
 		})
 	})
+
+	// OpenAPI spec & Swagger UI
+	docs.RegisterRoutes(r)
 
 	// Readiness probe (database is reachable)
 	r.GET("/readyz", func(c *gin.Context) {
@@ -74,7 +81,7 @@ func New(opts Options) *gin.Engine {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
 
 		if err := opts.DB.Ping(ctx); err != nil {
